@@ -182,6 +182,7 @@ func (s *Server) broadcastToRoom(sender *User, message string) {
 }
 
 
+/// Controla Comunicação usuarios <-> servidor 
 func (server *Server) handleConnetion(user *User) {
 	
 	
@@ -197,7 +198,7 @@ func (server *Server) handleConnetion(user *User) {
 	
 	server.sendMessage(user, fmt.Sprintf("Bem-vindo, %s! Você será conectado com outro usuário em breve...\n", user.Name))
 	
-	// Adiciona à fila de espera
+
 	server.addToWaitQueue(user)
 	
 	// Loop de mensagens
@@ -210,12 +211,12 @@ func (server *Server) handleConnetion(user *User) {
 		
 		message = strings.TrimSpace(message)
 		
-		// Comando para sair do chat atual
+		
 		if message == "/quit" {
 			server.removeUser(user)
 		}
 		
-		// Se estiver em um chat, envia a mensagem
+		
 		if user.ChatRoom != nil {
 			server.broadcastToRoom(user, message+"\n")
 		} else {
@@ -225,6 +226,8 @@ func (server *Server) handleConnetion(user *User) {
 }
 
 
+
+// Inicia Porta do Servidor 
 func (server *Server) Start(port string) {
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
