@@ -8,7 +8,6 @@ import (
 )
 
 
-
 type User struct {
 	ID       string
 	Name     string
@@ -20,16 +19,26 @@ type User struct {
 
 
 type ChatRoom struct {
-	ID    string
-	User1 *User
-	User2 *User
+    ID    string
+    User1 *User
+    User2 *User
+    Round *Round
+    mu    sync.Mutex
 }
+
+
+
 
 type Server struct {
 	users     map[string]*User
 	waitQueue []*User
 	chatRooms map[string]*ChatRoom
-	userID    string
-	roomID    string
+	
 	mutex     sync.RWMutex
+}
+
+type Round struct{
+	ID 		int
+	Sender  *User
+	
 }

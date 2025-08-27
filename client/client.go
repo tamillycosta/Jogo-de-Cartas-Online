@@ -62,11 +62,7 @@ func main() {
 
 		input = strings.TrimSpace(input)
 
-		if input == "/exit" {
-			fmt.Println("Desconectando...")
-			break
-		}
-
+		
 		// Envia mensagem para o servidor
 		writer.WriteString(input + "\n")
 		writer.Flush()

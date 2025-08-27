@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 	"github.com/google/uuid"
+	"math/rand"
 )
-
 
 
 
@@ -18,11 +18,8 @@ func NewServer() *Server {
 		users:     make(map[string]*User),
 		waitQueue: make([]*User, 0),
 		chatRooms: make(map[string]*ChatRoom),
-		userID:   "",
-		roomID:    "",
 	}
 }
-
 
 
 func (s *Server) PrintStats() {
@@ -93,6 +90,18 @@ func (server *Server) removeUser(user *User) {
 
 	
 	delete(server.users, user.ID)
+
+
+	// limpa da fila de espera caso esteja lá
+	newQueue := make([]*User, 0, len(server.waitQueue))
+	for _, u := range server.waitQueue {
+		if u.ID != user.ID {
+			newQueue = append(newQueue, u)
+		}
+	}
+	server.waitQueue = newQueue
+
+
 	user.Conn.Close()
 	server.tryMatchUsers()
 }
@@ -111,39 +120,46 @@ func (server *Server) addToWaitQueue(user *User) {
 }
 
 
-
 // Tenta gerar a combinação de 2 usuarios (chat) - 
 // Verifica se a lista de espera tem ao menos 2 users para formar um chat
+// Cria uma nova sala de chat
 func (server *Server) tryMatchUsers() {
 	if len(server.waitQueue) >= 2 {
 		user1 := server.waitQueue[0]
 		user2 := server.waitQueue[1]
-		
-		// 🔹 Evita chat com o mesmo usuário (bug de duplicação)
+
 		if user1.ID == user2.ID {
 			log.Println("Tentativa de criar chat com o mesmo usuário, ignorado.")
 			return
 		}
 
-
 		server.waitQueue = server.waitQueue[2:]
-		
-		// Cria uma nova sala de chat
+
 		room := &ChatRoom{
 			ID:    uuid.NewString(),
 			User1: user1,
 			User2: user2,
+			Round: &Round{},
+		}
+
+		// 🔹 Define jogador inicial
+		if rand.Intn(2) == 0 {
+			room.Round.Sender = user1
+		} else {
+			room.Round.Sender = user2
 		}
 
 		server.chatRooms[room.ID] = room
-		
-		// Associa os usuários à sala
 		user1.ChatRoom = room
 		user2.ChatRoom = room
-		
+
 		server.sendMessage(user1, fmt.Sprintf("SYSTEM: Você foi conectado com %s! Digite /quit para sair do chat.\n", user2.Name))
 		server.sendMessage(user2, fmt.Sprintf("SYSTEM: Você foi conectado com %s! Digite /quit para sair do chat.\n", user1.Name))
-		log.Printf("Chat criado: %s e %s na sala %s", user1.Name, user2.Name, room.ID)
+
+		// 🔹 Avisa de quem é a vez
+		server.sendMessage(room.Round.Sender, "SYSTEM: Sua vez de jogar!\n")
+		log.Printf("Chat criado: %s e %s na sala %s. Primeiro turno: %s",
+			user1.Name, user2.Name, room.ID, room.Round.Sender.Name)
 	}
 }
 
@@ -156,18 +172,28 @@ func (s *Server) sendMessage(user *User, message string) {
 
 
 
+
 // Cria a troca de menssagem entre dois usuarios no chat - 
 // servidor verifica quem é o usuario emissor e a menssagem 
 // envia a menssagem para o receptor
 func (s *Server) broadcastToRoom(sender *User, message string) {
+
 	if sender.ChatRoom == nil {
 		return
 	}
 	
 	// pega o chat no qual o usuario esta
 	room := sender.ChatRoom
+	// trava a sala para validar turno + alternar com segurança
+    room.mu.Lock()
+    defer room.mu.Unlock()
+
+	if(sender.ID != room.Round.Sender.ID){
+		s.sendMessage(sender, "Não é a sua vez de jogar! \n Aguarde...")
+		return
+	}
+
 	var receiver *User
-	
 	// Verifica quem é o receptor 
 	if room.User1.ID == sender.ID {
 		receiver = room.User2
@@ -179,12 +205,21 @@ func (s *Server) broadcastToRoom(sender *User, message string) {
 		formattedMessage := fmt.Sprintf("%s: %s", sender.Name, message)
 		s.sendMessage(receiver, formattedMessage)
 	}
+
+	//  Alterna turno
+	if(room.Round.Sender == room.User1){
+		room.Round.Sender = room.User2
+	}else{
+		room.Round.Sender = room.User1
+	}
+
+	s.sendMessage(room.Round.Sender, "SYSTEM: Sua vez de jogar!\n")
+
 }
 
 
 /// Controla Comunicação usuarios <-> servidor 
 func (server *Server) handleConnetion(user *User) {
-	
 	
 	name, err := user.Reader.ReadString('\n')
 
@@ -236,9 +271,6 @@ func (server *Server) Start(port string) {
 	defer listener.Close()
 	
 	log.Printf("Servidor iniciado na porta %s", port)
-	log.Println("Comandos disponíveis:")
-	log.Println("  /quit - Sair do chat atual")
-	log.Println("  /status - Ver estatísticas do servidor")
 	
 	for {
 		conn, err := listener.Accept()
