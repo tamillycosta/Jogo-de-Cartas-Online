@@ -10,7 +10,14 @@ type Screm struct{
 }
 
 func (s *Screm) ShowInitalMenu(){
-	fmt.Print("=========Bem Vindo Ao Magic Card===============\n")
+	fmt.Print("=============Bem Vindo Ao Magic Card===============\n")
 	fmt.Print("1 Entrar no Jogo\n")
-	fmt.Print("3 Sair\n")
+	fmt.Print("2 Sair\n")
+}
+
+
+func (s *Screm) ShowLobbyMenu(){
+	fmt.Print("=============LOBBY===============\n")
+	fmt.Print("1 Buscar Partida\n")
+	fmt.Print("2 Sair Do Jogo\n")
 }
