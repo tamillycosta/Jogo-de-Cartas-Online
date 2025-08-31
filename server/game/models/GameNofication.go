@@ -3,52 +3,38 @@ package models
 
 import(
 	"net"
-	"jogodecartasonline/utils"
+	
 	"encoding/json"
 	response "jogodecartasonline/api/Response"
 	"fmt"
 )
 
 
-// Envia Notificação do encontro de uma partida
-func MatchFound(player1Waiting WaitingPlayer, player2Waiting WaitingPlayer, matchResult MatchResult  ) {
-	// Notifica player 1
-	select {
-	case player1Waiting.MatchCh <- matchResult:
-	default: // Se channel estiver fechado, ignora
-	}
-	
-	// Notifica player 2  
-	select {
-	case player2Waiting.MatchCh <- matchResult:
-	default: // Se channel estiver fechado, ignora
-	}
-}
 
-
-func NotifyMatchFound(conn net.Conn, match *Match, player1, player2 *Player) {
+func  NotifyOpponent(opponent *WaitingPlayer, match *Match, requestingPlayer *Player) {
+    // Cria uma Response padrão para notificação
     resp := response.Response{}
     notification := resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
-        "type":     "MATCH_FOUND",
-        "matchId":  match.ID,
-        "player1":  utils.Encode(player1),
-        "player2":  utils.Encode(player2),
-        
+        "matchId":   match.ID,
+        "opponent":  requestingPlayer.Nome,
+        "type":      "MATCH_FOUND", // Para identificar que é notificação
     })
 
+    // Envia via conexão TCP usando JSON padrão
     data, err := json.Marshal(notification)
     if err != nil {
-        fmt.Printf("❌ Erro ao serializar notificação: %v\n", err)
+        fmt.Printf("Erro ao serializar notificação: %v\n", err)
         return
     }
 
-    _, err = conn.Write(data)
+    message := append(data, '\n')
+    _, err = opponent.Conn.Write(message)
     if err != nil {
-        fmt.Printf("❌ Erro ao enviar notificação para %s: %v\n", conn.RemoteAddr(), err)
+        fmt.Printf("Erro ao notificar %s: %v\n", opponent.Player.Nome, err)
         return
     }
 
-    fmt.Printf("🎮 Notificação de match enviada para %s\n", conn.RemoteAddr())
+    fmt.Printf("✅ %s notificado sobre match\n", opponent.Player.Nome)
 }
 
 
@@ -60,3 +46,16 @@ func (lobby *Lobby) SendTimeoutNotification(conn net.Conn) {
     data, _ := json.Marshal(notification)
     conn.Write(data)
 }
+
+
+
+// Cria resposta padrão para quem fez a requisição
+func  MakeMatchResponse(match *Match, opponent *Player) response.Response {
+    resp := response.Response{}
+    return resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
+        "matchId":  match.ID,
+        "opponent": opponent.Nome,
+         
+    })
+}
+

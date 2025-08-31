@@ -10,7 +10,7 @@ import (
 type WaitingPlayer struct {
 	Player  *Player
 	Conn    net.Conn
-	MatchCh chan MatchResult // Channel para receber resultado do match
+
 }
 
 type Round struct {

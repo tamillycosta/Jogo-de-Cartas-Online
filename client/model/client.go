@@ -47,14 +47,12 @@ func (c *Client) FoundMatch(player *models.Player) error {
 }
 
 
-// SendRequest permanece igual
 func (c *Client) SendRequest(req request.Request) error {
     dados, err := json.Marshal(req)
     if err != nil {
         return err
     }
     
-    // Adiciona delimiter também na requisição
     message := append(dados, '\n')
     
     _, err = c.Conn.Write(message)
@@ -65,13 +63,12 @@ func (c *Client) SendRequest(req request.Request) error {
 
 // Recebe resposta do servidor
 func (c *Client) ReceiveResponse() (response.Response, error) {
-    // Lê até encontrar quebra de linha (\n)
+   
     line, err := c.Reader.ReadBytes('\n')
     if err != nil {
         return response.Response{}, err
     }
     
-    // Remove a quebra de linha do final
     line = line[:len(line)-1]
     
     fmt.Printf("📩 JSON recebido: %s\n", string(line))
@@ -79,7 +76,7 @@ func (c *Client) ReceiveResponse() (response.Response, error) {
     var resp response.Response
     err = json.Unmarshal(line, &resp)
     if err != nil {
-        fmt.Printf("❌ Erro ao unmarshall: %v\n", err)
+        fmt.Printf(" Erro ao unmarshall: %v\n", err)
         return response.Response{}, err
     }
     
@@ -88,7 +85,6 @@ func (c *Client) ReceiveResponse() (response.Response, error) {
 
 
 func DecodePlayer(data interface{}) (*models.Player, error) {
-	// Primeiro garantir que o valor é string (caso resp.Data["player"] seja string)
 	playerJSON, ok := data.(string)
 	if !ok {
 		return nil, fmt.Errorf("dados do player não são uma string válida")

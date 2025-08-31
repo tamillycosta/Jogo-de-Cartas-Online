@@ -61,7 +61,6 @@ func (lobby *Lobby) AddPlayer(req request.Request, conn net.Conn) response.Respo
 }
 
 // Metodo Responssavel por adicionar jogador a lista de espera para encontrar uma partida
-// Remove toda a complexidade de channels para matchmaking
 func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingPlayer {
     playerJson := req.Params["player"]
 
@@ -70,11 +69,10 @@ func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingP
         return nil
     }
 
-    // Estrutura simples, sem channels desnecessários
     waitingPlayer := &WaitingPlayer{
         Player: &player,
         Conn:   conn,
-        // Remove MatchCh - não precisa para matchmaking
+      
     }
 
     lobby.Mu.Lock()
@@ -104,7 +102,7 @@ func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.R
         lobby.WaitQueue = lobby.WaitQueue[2:]
         lobby.Mu.Unlock()
 
-        // Cria match
+       
         match := NewMatch(*player1.Player, *player2.Player)
         match.ChoseStartPlayer(*player1.Player, *player2.Player)
 
@@ -114,19 +112,18 @@ func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.R
         player2.Player.Match = &match
         lobby.Mu.Unlock()
 
-        // 🎯 IDENTIFICA QUEM FEZ A REQUISIÇÃO
+        //  IDENTIFICA QUEM FEZ A REQUISIÇÃO
         if player1.Player.Nome == req.User {
-            // Player1 fez a requisição
-            lobby.NotifyOpponent(player2, &match, player1.Player)
-            return lobby.MakeMatchResponse(&match, player2.Player)
+           
+            NotifyOpponent(player2, &match, player1.Player)
+            return MakeMatchResponse(&match, player2.Player)
         } else {
-            // Player2 fez a requisição  
-            lobby.NotifyOpponent(player1, &match, player2.Player)
-            return lobby.MakeMatchResponse(&match, player1.Player)
+           
+            NotifyOpponent(player1, &match, player2.Player)
+            return MakeMatchResponse(&match, player1.Player)
         }
        
 	
-
     } else {
         lobby.Mu.Unlock()
         return resp.MakeSuccessResponse("Procurando partida...", map[string]string{
@@ -136,41 +133,7 @@ func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.R
 }
 
 
-func (lobby *Lobby) NotifyOpponent(opponent *WaitingPlayer, match *Match, requestingPlayer *Player) {
-    // Cria uma Response padrão para notificação
-    resp := response.Response{}
-    notification := resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
-        "matchId":   match.ID,
-        "opponent":  requestingPlayer.Nome,
-        "type":      "MATCH_FOUND", // Para identificar que é notificação
-    })
 
-    // Envia via conexão TCP usando JSON padrão
-    data, err := json.Marshal(notification)
-    if err != nil {
-        fmt.Printf("❌ Erro ao serializar notificação: %v\n", err)
-        return
-    }
-
-    message := append(data, '\n')
-    _, err = opponent.Conn.Write(message)
-    if err != nil {
-        fmt.Printf("❌ Erro ao notificar %s: %v\n", opponent.Player.Nome, err)
-        return
-    }
-
-    fmt.Printf("✅ %s notificado sobre match\n", opponent.Player.Nome)
-}
-
-// Cria resposta padrão para quem fez a requisição
-func (lobby *Lobby) MakeMatchResponse(match *Match, opponent *Player) response.Response {
-    resp := response.Response{}
-    return resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
-        "matchId":  match.ID,
-        "opponent": opponent.Nome,
-         
-    })
-}
 
 
 

@@ -22,12 +22,12 @@ func SendResponse(conn net.Conn, resp response.Response) error {
         return err
     }
     
-    // Adiciona delimiter no final (quebra de linha)
+  
     message := append(data, '\n')
     
     _, err = conn.Write(message)
     if err != nil {
-        fmt.Printf("❌ Erro ao enviar resposta: %v\n", err)
+        fmt.Printf("Erro ao enviar resposta: %v\n", err)
         return err
     }
     
@@ -47,14 +47,14 @@ func handleConnection(conn net.Conn) {
             if err == io.EOF {
                 fmt.Printf("📤 Cliente %s desconectou\n", conn.RemoteAddr())
             } else {
-                fmt.Printf("❌ Erro ao ler: %v\n", err)
+                fmt.Printf("Erro ao ler: %v\n", err)
             }
             return
         }
 
         req, err := request.Deserialize(buffer[:n])
         if err != nil {
-            fmt.Printf("❌ Erro ao desserializar: %v\n", err)
+            fmt.Printf("Erro ao desserializar: %v\n", err)
             continue
         }
 
@@ -62,9 +62,9 @@ func handleConnection(conn net.Conn) {
 
         resp := Server.Dispatch(req, conn)
         
-        // 🎯 USA A NOVA FUNÇÃO COM DELIMITER
+       
         if err := SendResponse(conn, resp); err != nil {
-            fmt.Printf("❌ Erro ao enviar: %v\n", err)
+            fmt.Printf(" Erro ao enviar: %v\n", err)
             return
         }
     }
