@@ -1,8 +1,12 @@
 package response
 
+
+
 import (
     "encoding/json"
+    "fmt"
 )
+
 
 type Response struct {
     Status  int               `json:"status"`
@@ -21,7 +25,16 @@ func (*Response) MakeErrorResponse(statusCode int, message string, errorType str
     return Response{Status: statusCode, Message: message, Data: error}
 }
 
-// 
-func (r Response) Serialize() ([]byte, error) {
-    return json.Marshal(r)
+
+
+// Desserializa JSON para Response
+func DecodeResponse(data string) (Response, error) {
+    var resp Response
+    err := json.Unmarshal([]byte(data), &resp)
+    if err != nil {
+        return Response{}, fmt.Errorf("erro ao decodificar response: %w", err)
+    }
+    return resp, nil
 }
+
+

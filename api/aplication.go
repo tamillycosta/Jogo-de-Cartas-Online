@@ -7,6 +7,7 @@ import (
 	"jogodecartasonline/api/Response"
 	"log"
 	"net"
+	"encoding/json"
 	
 )
 
@@ -45,7 +46,7 @@ func (api *Aplication) Dispatch(req request.Request, conn net.Conn) response.Res
 func (api *Aplication) InternalServerError(conn net.Conn, err error) {
     resp := response.Response{}
 	resp.MakeErrorResponse(500, "Houve um Erro no Servidor", "InternalServerError")
-    data, _ := resp.Serialize()
+    data, _ := json.Marshal(resp)
     conn.Write(data)
     log.Printf("Erro interno: %v\n", err)
     conn.Close()
