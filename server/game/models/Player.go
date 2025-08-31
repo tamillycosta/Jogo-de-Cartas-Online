@@ -16,8 +16,8 @@ type Player struct {
 	Score     int
 	Cards     []*Card          `gorm:"many2many:player_cards;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	MatchID   *string          `gorm:"-"`                      // partida atual (nullable)
-	Match     *Match          `gorm:"-"` 
-	Conn      net.Conn         `gorm:"-"`                                       // ignorado pelo GORM
+	Match     *Match           `gorm:"-"` 
+	Conn      net.Conn         `gorm:"-" json:"-"`                                    // ignorado pelo GORM
 	
 }
 
