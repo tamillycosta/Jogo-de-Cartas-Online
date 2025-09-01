@@ -1,12 +1,12 @@
 package config
 
-
 import (
-    "fmt"
-    "os"
+	"fmt"
+	"jogodecartasonline/server/game/models"
+	"os"
+
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"jogodecartasonline/server/game/models"
 )
 
 

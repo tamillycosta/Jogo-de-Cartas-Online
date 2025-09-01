@@ -107,20 +107,19 @@ func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.R
         match.ChoseStartPlayer(*player1.Player, *player2.Player)
 
         lobby.Mu.Lock()
-        lobby.Matchs[match.ID] = &match
-        player1.Player.Match = &match
-        player2.Player.Match = &match
+        lobby.Matchs[match.ID] = match
+        player1.Player.Match = match
+        player2.Player.Match = match
         lobby.Mu.Unlock()
 
         //  IDENTIFICA QUEM FEZ A REQUISIÇÃO
         if player1.Player.Nome == req.User {
-           
-            NotifyOpponent(player2, &match, player1.Player)
-            return MakeMatchResponse(&match, player2.Player)
+            NotifyOpponent(player2, match, player1.Player)
+            return MakeMatchResponse(match, player2.Player)
         } else {
            
-            NotifyOpponent(player1, &match, player2.Player)
-            return MakeMatchResponse(&match, player1.Player)
+            NotifyOpponent(player1, match, player2.Player)
+            return MakeMatchResponse(match, player1.Player)
         }
        
 	

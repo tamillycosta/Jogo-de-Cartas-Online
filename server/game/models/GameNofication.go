@@ -1,12 +1,12 @@
 package models
 
-
-import(
+import (
 	"net"
-	
+
 	"encoding/json"
-	response "jogodecartasonline/api/Response"
 	"fmt"
+	"jogodecartasonline/utils"
+	response "jogodecartasonline/api/Response"
 )
 
 
@@ -18,6 +18,7 @@ func  NotifyOpponent(opponent *WaitingPlayer, match *Match, requestingPlayer *Pl
         "matchId":   match.ID,
         "opponent":  requestingPlayer.Nome,
         "type":      "MATCH_FOUND", // Para identificar que é notificação
+		"yourTurn": fmt.Sprintf("%t", match.Round.Sender.Nome != opponent.Player.Nome),
     })
 
     // Envia via conexão TCP usando JSON padrão
@@ -38,6 +39,41 @@ func  NotifyOpponent(opponent *WaitingPlayer, match *Match, requestingPlayer *Pl
 }
 
 
+
+
+func NotifyOpponentAction(opponent *Player, actionResult GameActionResult) error {
+	resp := response.Response{}
+	notification := resp.MakeSuccessResponse("Ação do oponente", map[string]string{
+		"type":           "OPPONENT_ACTION",
+		"action":         actionResult.Action,
+		"actionResult":   utils.Encode(actionResult),
+		"opponentResult": utils.Encode(actionResult.OpponentResult),
+		"gameState":      utils.Encode(actionResult.GameState),
+	})
+
+	data, err := json.Marshal(notification)
+	if err != nil {
+		return fmt.Errorf("erro ao serializar: %v", err)
+	}
+
+	message := append(data, '\n')
+	_, err = opponent.Conn.Write(message)
+	if err != nil {
+		return fmt.Errorf("erro ao enviar: %v", err)
+	}
+
+	fmt.Printf("🔔 %s notificado sobre ação\n", opponent.Nome)
+	return nil
+}
+
+
+
+
+
+
+
+
+
 // Envia notificação de timeout
 func (lobby *Lobby) SendTimeoutNotification(conn net.Conn) {
     resp := response.Response{}
@@ -55,7 +91,8 @@ func  MakeMatchResponse(match *Match, opponent *Player) response.Response {
     return resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
         "matchId":  match.ID,
         "opponent": opponent.Nome,
-         
+        "yourTurn": fmt.Sprintf("%t", match.Round.Sender.Nome == opponent.Nome),
+        "matchStatus" :match.Status,
     })
 }
 
