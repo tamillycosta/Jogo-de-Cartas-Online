@@ -21,3 +21,11 @@ func (s *Screm) ShowLobbyMenu(){
 	fmt.Print("1 Buscar Partida\n")
 	fmt.Print("2 Sair Do Jogo\n")
 }
+
+func (s *Screm) ShowGameLoop(){
+	fmt.Println("\n=== SEU TURNO ===")
+        fmt.Println("1. Escolher carta")
+        fmt.Println("2. Atacar")
+        fmt.Println("3. Passar vez")
+        fmt.Println("4. Sair da partida")
+}

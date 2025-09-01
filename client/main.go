@@ -3,13 +3,102 @@ package main
 import (
 	"bufio"
 	"fmt"
+	response "jogodecartasonline/api/Response"
 	"jogodecartasonline/client/model"
 	"jogodecartasonline/client/screm"
+	"jogodecartasonline/server/game/models"
+
 	"net"
+	"time"
 )
 
+var menu screm.Screm
+
+// chanels de comunicação
+var (
+	loginResponse    = make(chan response.Response, 1)
+	matchResponse    = make(chan response.Response, 1)
+	gameNotification = make(chan response.Response, 10) // Buffer maior para notificações
+)
+
+// Decodifica as requisições do player
+func handleServerMessages(client *model.Client) {
+	messageCount := 0
+
+	for {
+		resp, err := client.ReceiveResponse()
+		if err != nil {
+			fmt.Printf("❌ Erro ao receber: %v\n", err)
+			return
+		}
+
+		messageCount++
+
+		//  ROTEIA BASEADO NO NÚMERO DA MENSAGEM E CONTEÚDO
+		if messageCount == 1 {
+			// Primeira mensagem sempre é login
+			loginResponse <- resp
+
+		} else if resp.Data["matchId"] != "" || resp.Message == "Procurando partida..." {
+			// Mensagens relacionadas a match
+			matchResponse <- resp
+
+		} else {
+			// Outras notificações (jogo, oponente, etc)
+			gameNotification <- resp
+		}
+	}
+}
+
+func processGameNotifications() {
+	for {
+		select {
+		case notification := <-gameNotification:
+			fmt.Printf("🔔 %s\n", notification.Message)
+
+			if notification.Data["type"] == "GAME_OVER" {
+				fmt.Printf("🏆 Jogo terminou!\n")
+			}
+
+		case <-time.After(100 * time.Millisecond):
+			// Não bloqueia se não há notificações
+			continue
+		}
+	}
+}
+
+func gameLoop(client *model.Client, player *models.Player) {
+	for {
+		menu.ShowGameLoop()
+
+		var opcao int
+		fmt.Scanln(&opcao)
+
+		switch opcao {
+		case 1:
+			fmt.Print("Escolha uma carta (0-4): ")
+			var cardIndex int
+			fmt.Scanln(&cardIndex)
+			client.ChooseCard(player, cardIndex)
+
+		case 2:
+			client.Attack(player)
+
+		case 3:
+			client.PassTurn(player)
+
+		case 4:
+			client.LeaveMatch(player)
+			return
+		}
+
+		// Aguarda resposta
+		time.Sleep(1 * time.Second)
+	}
+}
+
 func main() {
-	menu := &screm.Screm{}
+
 	menu.ShowInitalMenu()
 
 	var opcao int
@@ -28,63 +117,53 @@ func main() {
 		fmt.Scanln(&nome)
 
 		client := model.Client{
-            Conn:   conn,
-            Reader: bufio.NewReader(conn),
-            Nome: nome,
-        }
-		// envia request
-		err = client.LoginServer(nome)
-		if err != nil {
-			fmt.Println("Erro ao enviar request:", err)
+			Conn:   conn,
+			Reader: bufio.NewReader(conn),
+			Nome:   nome,
+		}
+
+		// Inicia goroutines
+		go handleServerMessages(&client)
+		go processGameNotifications()
+
+		// LOGIN com resposta sincronizada
+		client.LoginServer(nome)
+		var player *models.Player
+		select {
+		case loginResp := <-loginResponse:
+			fmt.Println("✅", loginResp.Message)
+			player, _ = model.DecodePlayer(loginResp.Data["player"])
+
+		case <-time.After(10 * time.Second):
+			fmt.Println("timeout no login")
 			return
 		}
 
-		// recebe resposta
-		resp, err := client.ReceiveResponse()
-
-		if err != nil {
-			fmt.Println("Erro ao receber resposta:", err)
-			return
-		}
-
-		fmt.Print(resp.Message)
-		player, err := model.DecodePlayer(resp.Data["player"])
-
-		if err != nil {
-			fmt.Println("Erro:", err)
-			return
-		}
-
-		// goritine para escutar o servidor
-
-		go func() {
-			for {
-				resp, err := client.ReceiveResponse()
-				if err != nil {
-					fmt.Println("Erro ao receber resposta:", err)
-					return
-				}
-
-				fmt.Printf("📩 Nova resposta do servidor: %+v\n", resp.Message)
-			}
-		}()
-
+		// LOBBY LOOP
 		for {
-
 			menu.ShowLobbyMenu()
 			fmt.Scanln(&opcao)
 
 			if opcao == 1 {
+				// Busca partida
 				client.FoundMatch(player)
 
-			}
+				// Espera resposta do match
+				select {
+				case matchResp := <-matchResponse:
+					if matchResp.Data["matchId"] != "" {
+					
+						fmt.Println("PARTIDA ENCONTRADA!")
+						gameLoop(&client, player)
+					} else {
+						// ⏳ AINDA PROCURANDO
+						fmt.Printf("⏳ %s\n", matchResp.Message)
+					}
 
-			if opcao == 2 {
-				//client.Exit()
-
-				return
+				case <-time.After(60 * time.Second):
+					fmt.Println("Timeout procurando partida")
+				}
 			}
 		}
-
 	}
 }

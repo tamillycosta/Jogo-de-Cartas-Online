@@ -6,6 +6,7 @@ import (
 	"jogodecartasonline/server/game/models"
 	"bufio"
 	"encoding/json"
+
 	"fmt"
 	"net"
 )
@@ -15,8 +16,6 @@ type Client struct {
 	Conn net.Conn
 	Reader *bufio.Reader
 }
-
-
 
 
 
@@ -46,7 +45,66 @@ func (c *Client) FoundMatch(player *models.Player) error {
 	return c.SendRequest(req)
 }
 
+// Player escolhe carta
+func (c *Client) ChooseCard(player *models.Player, cardIndex int) error {
+    req := request.Request{
+        User:   player.Nome,
+        Method: "chooseCard",
+        Params: map[string]string{
+            "cardIndex": fmt.Sprintf("%d", cardIndex),
+        },
+    }
+    return c.SendRequest(req)
+}
 
+// Player ataca
+func (c *Client) Attack(player *models.Player) error {
+    req := request.Request{
+        User:   player.Nome,
+        Method: "attack",
+        Params: map[string]string{},
+    }
+    return c.SendRequest(req)
+}
+
+// Player passa a vez
+func (c *Client) PassTurn(player *models.Player) error {
+    req := request.Request{
+        User:   player.Nome,
+        Method: "passTurn",
+        Params: map[string]string{},
+    }
+    return c.SendRequest(req)
+}
+
+// Player sai da partida
+func (c *Client) LeaveMatch(player *models.Player) error {
+    req := request.Request{
+        User:   player.Nome,
+        Method: "leaveMatch",
+        Params: map[string]string{},
+    }
+    return c.SendRequest(req)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// -----  METODOS AUXILIARES ------
 func (c *Client) SendRequest(req request.Request) error {
     dados, err := json.Marshal(req)
     if err != nil {
