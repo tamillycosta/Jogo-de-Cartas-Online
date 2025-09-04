@@ -69,11 +69,11 @@ type DamageResult struct {
 }
 
 // retorna uma nova partida
-func NewMatch(player1 Player, player2 Player) *Match {
+func NewMatch(player1 *Player, player2 *Player) *Match {
 	match := &Match{
 		ID:          uuid.NewString(),
-		Player1:     &player1,
-		Player2:     &player2,
+		Player1:     player1,
+		Player2:     player2,
 		Round:       &Round{ID: 1},
 		Status:      GAME_STATUS_ACTIVE,
 		Mu:          sync.RWMutex{},
@@ -115,7 +115,7 @@ func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) respon
 	}
 
 	var actionResult GameActionResult
-	switch req.Method {
+	switch req.Params["action"] {
 	case ACTION_CHOOSE_CARD:
 		actionResult = lobby.ProcessChoseCard(match, player, req)
 	case ACTION_ATTACK:
@@ -126,15 +126,23 @@ func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) respon
 		return resp.MakeErrorResponse(400, "Ação não reconhecida", "")
 	}
 
-	if actionResult.Success && !actionResult.GameEnded {
+	if actionResult.Success {
 		opponent := lobby.GetOpponent(match, player)
 		if opponent != nil {
-			if err := NotifyOpponentAction(player, actionResult); err != nil {
-				fmt.Printf("⚠️ Erro ao notificar oponente %s: %v\n", opponent.Nome, err)
+
+			shouldNotify := (actionResult.Action == ACTION_LEAVE_MATCH) || !actionResult.GameEnded
+
+			// So notifica se a partida não tiver acabado ou se alguem deixou a partida
+			if shouldNotify {
+				if err := NotifyOpponentAction(opponent, actionResult); err != nil {
+					fmt.Printf("⚠️ Erro ao notificar oponente %s: %v\n", opponent.Nome, err)
+				}
 			}
+
 		}
 	}
 
+	//so troca turno se jogo não acabou e se a jogada foi aceita
 	if actionResult.Success && !actionResult.GameEnded {
 		lobby.SwitchTurn(match)
 	}
@@ -142,7 +150,6 @@ func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) respon
 	return resp.MakeSuccessResponse("Ação processada", map[string]string{
 		"result": utils.Encode(actionResult),
 	})
-
 }
 
 // Processa a escolha de carta de um jogador
@@ -150,7 +157,6 @@ func (lobby *Lobby) ProcessChoseCard(match *Match, currentPlayer *Player, req re
 	match.Mu.Lock()
 	defer match.Mu.Unlock()
 
-	// verifica se é a vez do jogador
 	if !lobby.IsPlayerTurn(match, currentPlayer) {
 		return GameActionResult{
 			Success: false,
@@ -159,25 +165,59 @@ func (lobby *Lobby) ProcessChoseCard(match *Match, currentPlayer *Player, req re
 		}
 	}
 
-	card := currentPlayer.ChoseCard()
+	cardIndexStr, exists := req.Params["cardIndex"]
+	if !exists {
+		cardIndexStr = "0"
+	}
+
+	cardIndex := 0
+	if _, err := fmt.Sscanf(cardIndexStr, "%d", &cardIndex); err != nil {
+		cardIndex = 0
+	}
+
+	card := lobby.ChooseCard(*currentPlayer, cardIndex)
+
+	if card == nil {
+		fmt.Printf("Erro: carta não encontrada para índice %d\n", cardIndex)
+		return GameActionResult{
+			Success: false,
+			Action:  ACTION_CHOOSE_CARD,
+			Message: "Erro ao escolher carta ou carta inválida",
+		}
+	}
+
+	if card.Health == 0 {
+		return GameActionResult{
+			Success: false,
+			Action:  ACTION_CHOOSE_CARD,
+			Message: "Esta carta ja esta sem vida, escolha outra para batalhar",
+		}
+	}
+
+	// ✅ LOG da carta escolhida
+	fmt.Printf("✅ Carta escolhida: %s (Power: %d, HP: %d)\n", card.Nome, card.Power, card.Health)
 
 	return GameActionResult{
 		Success: true,
 		Action:  ACTION_CHOOSE_CARD,
 		Message: fmt.Sprintf("%s escolheu uma carta", currentPlayer.Nome),
 		PlayerResult: map[string]interface{}{
-			"card":    utils.Encode(card),
-			"message": "Carta escolhida com sucesso!",
+			"cardName":   card.Nome,
+			"cardPower":  card.Power,
+			"cardHealth": card.Health,
+			"message":    "Carta escolhida com sucesso!",
 		},
 		OpponentResult: map[string]interface{}{
-			"message": fmt.Sprintf("%s escolheu uma carta", currentPlayer.Nome),
+			"message":    fmt.Sprintf("%s escolheu uma carta", currentPlayer.Nome),
+			"cardName":   card.Nome,
+			"cardPower":  card.Power,
+			"cardHealth": card.Health,
 		},
 		GameState: map[string]interface{}{
 			"currentTurn": lobby.GetOpponent(match, currentPlayer).Nome,
-			"round":       match.Round,
+			"roundId":     match.Round.ID,
 		},
 	}
-
 }
 
 // Verifica se a ataque de um jogador ira finalizar o jogo
@@ -197,7 +237,7 @@ func (lobby *Lobby) applyDamage(match *Match, opponent *Player, attackPower int)
 	cardHP := opponent.CurrentCard.Health
 
 	// Aplica dano primeiro na carta
-	if cardHP >= attackPower {
+	if cardHP > attackPower {
 		// Carta absorve todo o dano
 		opponent.CurrentCard.Health -= attackPower
 
@@ -248,6 +288,14 @@ func (lobby *Lobby) ProcessAttack(match *Match, currentPlayer *Player, req reque
 		}
 	}
 
+	if currentPlayer.CurrentCard.Health == 0 {
+		return GameActionResult{
+			Success: false,
+			Action:  ACTION_ATTACK,
+			Message: "Sua carta ja esta sem vida, escolha outra",
+		}
+	}
+
 	// Procura oponente
 	opponent := lobby.GetOpponent(match, currentPlayer)
 	if opponent == nil {
@@ -284,12 +332,15 @@ func (lobby *Lobby) ProcessAttack(match *Match, currentPlayer *Player, req reque
 			"message":        "Ataque realizado!",
 		},
 		OpponentResult: map[string]interface{}{
-			"damageTaken":     damageResult.DamageDealt,
+			"damageTaken":     attackPower,
 			"lifeRemaining":   damageResult.OpponentLifeRemaining,
 			"cardHPRemaining": damageResult.OpponentCardHP,
 			"message":         fmt.Sprintf("Você recebeu %d de dano", damageResult.DamageDealt),
 		},
-		GameState: lobby.getGameStateMap(match),
+		GameState: map[string]interface{}{
+			"currentTurn": lobby.GetOpponent(match, currentPlayer).Nome,
+			"roundId":     match.Round.ID,
+		},
 	}
 }
 
@@ -303,34 +354,33 @@ func (lobby *Lobby) ProcessLeaveMatch(match *Match, leavingPlayer *Player) GameA
 
 	// Remove match do lobby
 	lobby.Mu.Lock()
+	// Remove match do lobby
 	delete(lobby.Matchs, match.ID)
-	delete(lobby.Players, leavingPlayer.Nome)
 	lobby.Mu.Unlock()
 
-	// Fecha conexão
-	leavingPlayer.LeaveMatch(*leavingPlayer)
+	// Oponente ganha por W.O.
+	lobby.EndMatch(match, opponent)
+
+
+	lobby.Mu.Lock()
+    delete(lobby.Players, leavingPlayer.Nome)
+    lobby.Mu.Unlock()
 
 	return GameActionResult{
 		Success:   true,
 		Action:    ACTION_LEAVE_MATCH,
 		Message:   fmt.Sprintf("%s saiu da partida", leavingPlayer.Nome),
 		GameEnded: true,
-		Winner:    opponent, // Oponente ganha por W.O.
+		Winner:    opponent,
 		PlayerResult: map[string]interface{}{
 			"message": "Você saiu da partida",
 		},
 		OpponentResult: map[string]interface{}{
 			"message": fmt.Sprintf("%s saiu da partida. Você ganhou!", leavingPlayer.Nome),
+			"score":   opponent.Score,
 		},
 	}
 }
-
-
-
-
-
-
-
 
 // -------------------- Funções auxiliares -----------------------------------
 
@@ -381,29 +431,8 @@ func (lobby *Lobby) EndMatch(match *Match, winner *Player) {
 
 	// Atualiza scores no banco
 	if winner != nil {
-		winner.Score++
+		winner.Score += 100
 		lobby.DB.Save(winner)
 	}
 
-	fmt.Printf("🏆 Match %s finalizado. Vencedor: %s\n", match.ID, winner.Nome)
-}
-
-func (lobby *Lobby) getGameStateMap(match *Match) map[string]interface{} {
-	var currentTurn string
-	if match.Round != nil && match.Round.Sender != nil {
-		currentTurn = match.Round.Sender.Nome
-	} else {
-		currentTurn = "UNKNOWN"
-	}
-
-	return map[string]interface{}{
-		"matchId":     match.ID,
-		"currentTurn": currentTurn,
-		"roundNumber": match.Round.ID,
-		"player1Life": match.Player1Life,
-		"player2Life": match.Player2Life,
-		"status":      match.Status,
-		"player1Name": match.Player1.Nome,
-		"player2Name": match.Player2.Nome,
-	}
 }
