@@ -19,17 +19,29 @@ type Client struct {
 
 
 
-// porta d entrada do usuario no server
-func (c *Client) LoginServer(nome string) error {
+// requisição de login do usuario no server
+func (c *Client) LoginServer(name string) error {
 	req := request.Request{
-		User:   nome,
+		User:   name,
 		Method: "addUser",
 		Params: map[string]string{
-			"nome": nome,
+			"nome": name,
 		},
 	}
 	return c.SendRequest(req)
 }
+
+func (c *Client) LeaveServer(username string) error{
+    req := request.Request{
+        User: username,
+        Method: "DeletePlayer",
+        Params: map[string]string{
+			"nome": username,
+		},
+    }
+    return c.SendRequest(req)
+}
+
 
 // requisição para achar uma partida
 func (c *Client) FoundMatch(player *models.Player) error {
@@ -49,9 +61,11 @@ func (c *Client) FoundMatch(player *models.Player) error {
 func (c *Client) ChooseCard(player *models.Player, cardIndex int) error {
     req := request.Request{
         User:   player.Nome,
-        Method: "chooseCard",
+        Method: "ProcessGameAction",
         Params: map[string]string{
+            "action" : "chooseCard",
             "cardIndex": fmt.Sprintf("%d", cardIndex),
+            
         },
     }
     return c.SendRequest(req)
@@ -61,8 +75,10 @@ func (c *Client) ChooseCard(player *models.Player, cardIndex int) error {
 func (c *Client) Attack(player *models.Player) error {
     req := request.Request{
         User:   player.Nome,
-        Method: "attack",
-        Params: map[string]string{},
+        Method: "ProcessGameAction",
+        Params: map[string]string{
+            "action" : "attack",
+        },
     }
     return c.SendRequest(req)
 }
@@ -71,7 +87,7 @@ func (c *Client) Attack(player *models.Player) error {
 func (c *Client) PassTurn(player *models.Player) error {
     req := request.Request{
         User:   player.Nome,
-        Method: "passTurn",
+        Method: "ProcessGameAction",
         Params: map[string]string{},
     }
     return c.SendRequest(req)
@@ -81,8 +97,10 @@ func (c *Client) PassTurn(player *models.Player) error {
 func (c *Client) LeaveMatch(player *models.Player) error {
     req := request.Request{
         User:   player.Nome,
-        Method: "leaveMatch",
-        Params: map[string]string{},
+        Method: "ProcessGameAction",
+        Params: map[string]string{
+           "action": "leaveMatch",
+        },
     }
     return c.SendRequest(req)
 }
@@ -129,7 +147,6 @@ func (c *Client) ReceiveResponse() (response.Response, error) {
     
     line = line[:len(line)-1]
     
-    fmt.Printf("📩 JSON recebido: %s\n", string(line))
     
     var resp response.Response
     err = json.Unmarshal(line, &resp)
