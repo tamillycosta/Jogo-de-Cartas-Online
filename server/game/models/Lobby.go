@@ -26,38 +26,46 @@ type Lobby struct {
 	DB        *gorm.DB
 }
 
+
+
+
 // Metodo Responssavel por adicionar um jogador ao Lobby
 func (lobby *Lobby) AddPlayer(req request.Request, conn net.Conn) response.Response {
-	lobby.Mu.Lock()
-	defer lobby.Mu.Unlock()
-	resp := response.Response{}
+    lobby.Mu.Lock()
+    defer lobby.Mu.Unlock()
+    resp := response.Response{}
 
-	username := req.Params["nome"]
+    username := req.Params["nome"]
 
-	var player Player
-	result := lobby.DB.Where("nome = ?", username).First(&player)
+    var player Player
+    result := lobby.DB.Preload("Cards").Where("nome = ?", username).First(&player) 
 
-	if result.Error == nil {
-		// existe no banco
-		if lobby.isLog(username) {
-			return resp.MakeErrorResponse(403, "Ação proibida - User já está logado", "403 Forbidden")
-		}
-		fmt.Print("entrou aqui")
-		player.Conn = conn
-		lobby.Players[player.Nome] = &player
+    if result.Error == nil {
+        // existe no banco
+        if lobby.isLog(username) {
+            return resp.MakeErrorResponse(403, "Ação proibida - User já está logado", "403 Forbidden")
+        }
+        fmt.Print("entrou aqui")
+        player.Conn = conn
+        lobby.Players[player.Nome] = &player
 
-	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		newPlayer := CreateAccount(req, conn)
-		lobby.DB.Create(&newPlayer)
-		lobby.Players[newPlayer.Nome] = &newPlayer
-		player = newPlayer
-	} else {
-		return resp.MakeErrorResponse(500, "Erro ao acessar o banco", "500 Internal Server Error")
-	}
+    } else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+        newPlayer := CreateAccount(req, conn)
+        lobby.DB.Create(&newPlayer)
+        lobby.AddCard(&newPlayer)
+        
+        // Carrega as cartas recém-criadas
+        lobby.DB.Preload("Cards").Where("id = ?", newPlayer.ID).First(&newPlayer) // MUDANÇA AQUI
+        
+        lobby.Players[newPlayer.Nome] = &newPlayer
+        player = newPlayer
+    } else {
+        return resp.MakeErrorResponse(500, "Erro ao acessar o banco", "500 Internal Server Error")
+    }
 
-	return resp.MakeSuccessResponse("Jogador adicionado com sucesso", map[string]string{
-		"player": utils.Encode(player),
-	})
+    return resp.MakeSuccessResponse("Jogador adicionado com sucesso", map[string]string{
+        "player": utils.Encode(player),
+    })
 }
 
 // Metodo Responssavel por adicionar jogador a lista de espera para encontrar uma partida
@@ -84,58 +92,102 @@ func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingP
 
 // Tenta combinar dois players em uma partida
 func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.Response {
-    resp := response.Response{}
+	resp := response.Response{}
+	
+	playerName := req.User
+	
+	// Verifica se o jogador ja esta na fila 
+	lobby.Mu.Lock()
+	for _, waitingPlayer := range lobby.WaitQueue {
+		if waitingPlayer.Player.Nome == playerName {
+			lobby.Mu.Unlock()
+			return resp.MakeErrorResponse(400, "Você já está na fila de espera", "")
+		}
+	}
+	lobby.Mu.Unlock()
+	
+	
 
-    // Adiciona à fila
-    waitingPlayer := lobby.AddToWaitQueue(req, conn)
-    if waitingPlayer == nil {
-        return resp.MakeErrorResponse(402, "Erro ao Adicionar Jogador a Fila de espera", "")
-    }
+	// Adiciona à fila
+	waitingPlayer := lobby.AddToWaitQueue(req, conn)
+	if waitingPlayer == nil {
+		return resp.MakeErrorResponse(402, "Erro ao Adicionar Jogador a Fila de espera", "")
+	}
 
-    lobby.Mu.Lock()
-    queueLength := len(lobby.WaitQueue)
-    
-    if queueLength >= 2 {
-        // MATCH ENCONTRADO
-        player1 := lobby.WaitQueue[0] 
-        player2 := lobby.WaitQueue[1]
+	lobby.Mu.Lock()
+	queueLength := len(lobby.WaitQueue)
+	
+	// Se tiverem dois jogadores na lista 
+	if queueLength >= 2 {
+		
+		waiting1 := lobby.WaitQueue[0]
+        waiting2 := lobby.WaitQueue[1]
         lobby.WaitQueue = lobby.WaitQueue[2:]
         lobby.Mu.Unlock()
 
-       
-        match := NewMatch(*player1.Player, *player2.Player)
-        match.ChoseStartPlayer(*player1.Player, *player2.Player)
 
-        lobby.Mu.Lock()
-        lobby.Matchs[match.ID] = match
-        player1.Player.Match = match
-        player2.Player.Match = match
-        lobby.Mu.Unlock()
+		player1 := lobby.Players[waiting1.Player.Nome]
+        player2 := lobby.Players[waiting2.Player.Nome]
 
-        //  IDENTIFICA QUEM FEZ A REQUISIÇÃO
-        if player1.Player.Nome == req.User {
-            NotifyOpponent(player2, match, player1.Player)
-            return MakeMatchResponse(match, player2.Player)
-        } else {
-           
-            NotifyOpponent(player1, match, player2.Player)
-            return MakeMatchResponse(match, player1.Player)
+		if player1 == nil || player2 == nil {
+            return resp.MakeErrorResponse(500, "Erro: Players não encontrados no lobby", "")
         }
-       
-	
-    } else {
-        lobby.Mu.Unlock()
-        return resp.MakeSuccessResponse("Procurando partida...", map[string]string{
-            "posicao": fmt.Sprintf("%d", queueLength),
-        })
-    }
+		
+
+		// Cria match
+		match := NewMatch(player1, player2)
+		match.ChoseStartPlayer(*player1, *player2)
+
+		lobby.Mu.Lock()
+		lobby.Matchs[match.ID] = match
+		player1.Match = match
+		player2.Match = match
+		lobby.Mu.Unlock()
+
+		
+		if player1.Nome == playerName {
+			// Player1 fez a requisição - notifica Player2
+			NotifyMatchFound(waiting2, match, player1)
+			return MakeMatchFoundResponse(match, player2)
+		} else {
+			// Player2 fez a requisição - notifica Player1  
+			NotifyMatchFound(waiting1, match, player2)
+			return MakeMatchFoundResponse(match, player1)
+		}
+		
+	} else {
+		lobby.Mu.Unlock()
+		
+		
+		return resp.MakeSuccessResponse("Procurando partida...", map[string]string{
+			"type":    "SEARCHING",
+			"posicao": fmt.Sprintf("%d", queueLength),
+		})
+	}
 }
 
 
 
 
+func (lobby *Lobby) DeletePlayer(req request.Request, conn net.Conn) response.Response{
+	lobby.Mu.Lock()
+    defer lobby.Mu.Unlock()
 
+	resp := response.Response{}
+    username := req.Params["nome"]
 
+	if !lobby.isLog(username){
+		return resp.MakeErrorResponse(403, "Ação proibida - User Não Esta Conectado", "403 Forbidden")
+	}
+
+	player := lobby.Players[username]
+	delete(lobby.Players, username)
+	
+
+	return resp.MakeSuccessResponse("Jogador removido do server com sucesso", map[string]string{
+        "player": utils.Encode(player),
+    })
+}
 
 
 
