@@ -28,7 +28,7 @@ func (*Screm) ClearScreen() {
 
 
 func (s *Screm) ShowInitalMenu(){
-	fmt.Print("=============Bem Vindo Ao Magic Card===============\n")
+	fmt.Print("=============Bem Vindo Ao MagiCards===============\n")
 	fmt.Print("1 Entrar no Jogo\n")
 	fmt.Print("2 Sair\n")
 }
@@ -48,6 +48,26 @@ func (s *Screm) ShowGameLoop(){
 }
 
 
+func (s *Screm) ShowPlayerResultCard(playerResult map[string]interface{}){
+
+	fmt.Println("\n🃏 Oponente escolheu uma carta")
+		fmt.Printf("\n✅ Carta escolhida: %s (Poder: %.0f, Vida: %.0f)\n",
+		playerResult["cardName"],
+		playerResult["cardPower"],
+		playerResult["cardHealth"])
+}
+
+func (s *Screm) ShowPlayerResultAtack(playerResult map[string]interface{}){
+	attackPower := playerResult["attackPower"]
+			opponentLife := playerResult["opponentLife"]
+			opponentCardHP := playerResult["opponentCardHP"]
+	fmt.Printf("\n⚔️ Ataque realizado! Poder: %.0f\n", attackPower)
+	fmt.Printf("   Vida do oponente: %.0f | Vida da carta: %.0f\n",
+		opponentLife, opponentCardHP)
+}
+
+
+
 func (s *Screm) ShowOpponentResultCard(opponenteResult map[string]interface{}){
 	fmt.Println("\n🃏 Oponente escolheu uma carta")
 			fmt.Printf("\n✅ Carta escolhida: %s (Poder: %.0f, Vida: %.0f)\n", 
@@ -55,15 +75,6 @@ func (s *Screm) ShowOpponentResultCard(opponenteResult map[string]interface{}){
 			opponenteResult["cardPower"], 
 			opponenteResult["cardHealth"])
 }
-
-
-
-func (s *Screm) ShowPlayerGameEnd(playerResult map[string]interface{}){
-	fmt.Println("=== VOCÊ PERDEU ===")
-	fmt.Print(playerResult["message"] ,"\n")
-	fmt.Printf("Sem danos ao seu score")
-}
-
 
 
 func (s *Screm) ShowOpponentResultAtack(opponentResult map[string]interface{}){

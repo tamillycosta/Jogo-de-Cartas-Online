@@ -1,7 +1,7 @@
 package models
 
 import (
-	"net"
+	
 
 	"encoding/json"
 	"fmt"
@@ -11,88 +11,104 @@ import (
 
 
 
-func  NotifyOpponent(opponent *WaitingPlayer, match *Match, requestingPlayer *Player) {
-    // Cria uma Response padrão para notificação
+func NotifyMatchFound(waitingPlayer *WaitingPlayer, match *Match, opponent *Player) {
+	resp := response.Response{}
+	notification := resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
+		"type":     "MATCH_FOUND",
+		"matchId":  match.ID,
+		"opponent": opponent.Nome,
+		"yourTurn": fmt.Sprintf("%t", match.Round.Sender.Nome == waitingPlayer.Player.Nome),
+	})
+
+	data, err := json.Marshal(notification)
+	if err != nil {
+		fmt.Printf("❌ Erro ao serializar notificação: %v\n", err)
+		return
+	}
+
+	message := append(data, '\n')
+	_, err = waitingPlayer.Conn.Write(message)
+	if err != nil {
+		fmt.Printf("❌ Erro ao notificar %s: %v\n", waitingPlayer.Player.Nome, err)
+		return
+	}
+
+	fmt.Printf("✅ %s notificado sobre partida encontrada\n", waitingPlayer.Player.Nome)
+}
+
+// Resposta para quem fez a requisição e encontrou match
+func MakeMatchFoundResponse(match *Match, opponent *Player) response.Response {
+	resp := response.Response{}
+	return resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
+		"type":     "MATCH_FOUND",
+		"matchId":  match.ID,
+		"opponent": opponent.Nome,
+		"yourTurn": fmt.Sprintf("%t", match.Round.Sender.Nome != opponent.Nome),
+	})
+}
+
+func NotifyGameEnd(player *Player, gameResult GameActionResult, isWinner bool) {
     resp := response.Response{}
-    notification := resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
-        "matchId":   match.ID,
-        "opponent":  requestingPlayer.Nome,
-        "type":      "MATCH_FOUND", // Para identificar que é notificação
-		"yourTurn": fmt.Sprintf("%t", match.Round.Sender.Nome != opponent.Player.Nome),
+    
+    resultType := "LOSS"
+    message := "Você foi derrotado!"
+    
+    if isWinner {
+        resultType = "WIN"
+        message = "Você venceu!"
+    }
+    
+    notification := resp.MakeSuccessResponse(message, map[string]string{
+        "type":       "GAME_ENDED",
+        "result":     resultType,
+        "winner":     gameResult.Winner.Nome,
+        "reason":     gameResult.Action, // attack ou leaveMatch
+        "message":    message,
     })
 
-    // Envia via conexão TCP usando JSON padrão
     data, err := json.Marshal(notification)
     if err != nil {
-        fmt.Printf("Erro ao serializar notificação: %v\n", err)
+        fmt.Printf("❌ Erro ao serializar notificação de fim de jogo: %v\n", err)
         return
+    }
+
+    message_bytes := append(data, '\n')
+    _, err = player.Conn.Write(message_bytes)
+    if err != nil {
+        fmt.Printf("❌ Erro ao notificar fim de jogo para %s: %v\n", player.Nome, err)
+        return
+    }
+
+    
+}
+
+func NotifyOpponentAction(opponent *Player, actionResult GameActionResult) error {
+    resp := response.Response{}
+    notification := resp.MakeSuccessResponse("Ação do oponente", map[string]string{
+        "type":           "OPPONENT_ACTION",
+        "action":         actionResult.Action,
+        "actionResult":   utils.Encode(actionResult),
+        "opponentResult": utils.Encode(actionResult.OpponentResult),
+        "gameState":      utils.Encode(actionResult.GameState),
+    })
+
+    data, err := json.Marshal(notification)
+    if err != nil {
+        return fmt.Errorf("erro ao serializar: %v", err)
     }
 
     message := append(data, '\n')
     _, err = opponent.Conn.Write(message)
     if err != nil {
-        fmt.Printf("Erro ao notificar %s: %v\n", opponent.Player.Nome, err)
-        return
+        return fmt.Errorf("erro ao enviar: %v", err)
     }
 
-    fmt.Printf("✅ %s notificado sobre match\n", opponent.Player.Nome)
-}
-
-
-
-
-func NotifyOpponentAction(opponent *Player, actionResult GameActionResult) error {
-	resp := response.Response{}
-	notification := resp.MakeSuccessResponse("Ação do oponente", map[string]string{
-		"type":           "OPPONENT_ACTION",
-		"action":         actionResult.Action,
-		"actionResult":   utils.Encode(actionResult),
-		"opponentResult": utils.Encode(actionResult.OpponentResult),
-		"gameState":      utils.Encode(actionResult.GameState),
-	})
-
-	data, err := json.Marshal(notification)
-	if err != nil {
-		return fmt.Errorf("erro ao serializar: %v", err)
-	}
-
-	message := append(data, '\n')
-	_, err = opponent.Conn.Write(message)
-	if err != nil {
-		return fmt.Errorf("erro ao enviar: %v", err)
-	}
-
-	fmt.Printf("🔔 %s notificado sobre ação\n", opponent.Nome)
-	return nil
+    fmt.Printf("🔔 %s notificado sobre ação\n", opponent.Nome)
+    return nil
 }
 
 
 
 
 
-
-
-
-
-// Envia notificação de timeout
-func (lobby *Lobby) SendTimeoutNotification(conn net.Conn) {
-    resp := response.Response{}
-    notification := resp.MakeErrorResponse(408, "Timeout", "Nenhuma partida encontrada em 60 segundos")
-
-    data, _ := json.Marshal(notification)
-    conn.Write(data)
-}
-
-
-
-// Cria resposta padrão para quem fez a requisição
-func  MakeMatchResponse(match *Match, opponent *Player) response.Response {
-    resp := response.Response{}
-    return resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
-        "matchId":  match.ID,
-        "opponent": opponent.Nome,
-        "yourTurn": fmt.Sprintf("%t", match.Round.Sender.Nome == opponent.Nome),
-        "matchStatus" :match.Status,
-    })
-}
 
