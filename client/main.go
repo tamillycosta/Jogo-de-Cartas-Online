@@ -9,12 +9,11 @@ import (
 	"jogodecartasonline/client/screm"
 	"jogodecartasonline/server/game/models"
 	"net"
-	
+
 	"time"
 )
 
 var menu screm.Screm
-
 
 // Estados do matchmaking
 type MatchmakingState struct {
@@ -36,7 +35,6 @@ var (
 // Configuração para debug
 const DEBUG_MODE = false // Mude para true se quiser ver debug
 
-
 // Estrutura para dados da ação decodificados
 type GameAction struct {
 	Success        bool                   `json:"success"`
@@ -48,9 +46,16 @@ type GameAction struct {
 	Message        string                 `json:"message"`
 }
 
+func resetGameState() {
+    matchState.GameState = nil
+    matchState.CurrentTurn = ""
+    
+}
+
+//Decodifica os responses do servidor
 func handleServerMessages(client *model.Client) {
 	isFirstMessage := true
-	
+
 	for {
 		resp, err := client.ReceiveResponse()
 		if err != nil {
@@ -58,60 +63,81 @@ func handleServerMessages(client *model.Client) {
 			return
 		}
 
-		
 		if DEBUG_MODE {
-			fmt.Printf("DEBUG - Recebido: Status=%d, Message='%s', Data=%+v\n", 
-				resp.Status, resp.Message, resp.Data)
+			fmt.Printf("DEBUG - Recebido: Status=%d, Message='%s', Type='%s'\n",
+				resp.Status, resp.Message, resp.Data["type"])
 		}
 
-		// PRIMEIRA MENSAGEM = LOGIN
 		if isFirstMessage {
 			loginResponse <- resp
 			isFirstMessage = false
 			continue
 		}
 
-		
 		messageType := resp.Data["type"]
-		
+
 		switch messageType {
 		case "MATCH_FOUND":
 			fmt.Println("\n🎉 PARTIDA ENCONTRADA!")
 			matchState.IsSearching = false
 			matchState.InGame = true
 			matchFoundChannel <- resp
+
+		case "GAME_ENDED":
 			
+			fmt.Println("\n🏆 JOGO FINALIZADO!")
+
+			result := resp.Data["result"]
+			winner := resp.Data["winner"]
+			reason := resp.Data["reason"]
+
+			if result == "WIN" {
+				fmt.Printf("🎉 VOCÊ VENCEU! 🎉\n")
+				if reason == "leaveMatch" {
+					fmt.Println("Oponente desistiu da partida")
+				} else {
+					fmt.Println("Parabéns pela vitória!")
+				}
+			} else {
+				fmt.Printf("💀 VOCÊ FOI DERROTADO!\n")
+				fmt.Printf("Vencedor: %s\n", winner)
+				if reason == "attack" {
+					fmt.Println("Você foi derrotado em combate")
+				}
+			}
+
+			matchState.InGame = false
+
+			// Pequena pausa para ler resultado
+			time.Sleep(3 * time.Second)
+
 		case "OPPONENT_ACTION":
 			gameNotifications <- resp
-			
+
 		case "GAME_OVER":
 			fmt.Println("\n🏆 JOGO FINALIZADO!")
 			gameNotifications <- resp
-			
+
 		default:
-			// MENSAGENS DE STATUS
 			if resp.Message == "Procurando partida..." {
 				fmt.Printf("⏳ Procurando oponente... (Posição: %s)\n", resp.Data["posicao"])
-				
+
 			} else if resp.Data["matchId"] != "" {
 				fmt.Println("\n🎉 PARTIDA ENCONTRADA!")
 				matchState.IsSearching = false
 				matchState.InGame = true
 				matchFoundChannel <- resp
-				
+
+			} else if resp.Message == "Ação processada" {
+				processPlayerActionResponse(resp)
 			} else {
-				// Resposta de ação do próprio jogador
-				if resp.Message == "Ação processada" {
-					processPlayerActionResponse(resp)
-				} else {
-					fmt.Printf("📩 %s\n", resp.Message)
-				}
+				fmt.Printf("📩 %s\n", resp.Message)
 			}
 		}
 	}
 }
 
-// Processa atulizaçaõ do estado do jogador 
+// Processa atulizaçaõ do estado do jogador
 func processPlayerActionResponse(resp response.Response) {
 	resultStr, ok := resp.Data["result"]
 	if !ok {
@@ -120,54 +146,52 @@ func processPlayerActionResponse(resp response.Response) {
 
 	var gameAction GameAction
 	if err := json.Unmarshal([]byte(resultStr), &gameAction); err != nil {
-		if DEBUG_MODE {
-			fmt.Printf("Erro ao decodificar ação: %v\n", err)
-		}
 		return
 	}
 
 	if !gameAction.Success {
-		fmt.Printf("\n %s\n", gameAction.Message)
+		fmt.Printf("\n❌ %s\n", gameAction.Message)
 		return
 	}
 
 	// Atualiza estado do jogo
 	if gameAction.GameState != nil {
 		matchState.GameState = gameAction.GameState
-		
 	}
 
-	// Mostra resultado da ação
+	// Processa resultado da própria ação
 	switch gameAction.Action {
 	case "chooseCard":
 		if playerResult := gameAction.PlayerResult; playerResult != nil {
-			fmt.Printf("\n✅ Carta escolhida: %s (Poder: %.0f, Vida: %.0f)\n", 
-				playerResult["cardName"], 
-				playerResult["cardPower"], 
-				playerResult["cardHealth"])
+			menu.ShowPlayerResultCard(playerResult)
 		}
+
 	case "attack":
 		if playerResult := gameAction.PlayerResult; playerResult != nil {
-			fmt.Printf("\n⚔️ Ataque realizado! Poder: %.0f\n", playerResult["attackPower"])
-			fmt.Printf("   Vida do oponente: %.0f | Vida da carta: %.0f\n", 
-				playerResult["opponentLife"], 
-				playerResult["opponentCardHP"])
+			menu.ShowPlayerResultAtack(playerResult)
+			if result, ok := playerResult["result"].(string); ok {
+				if result == "WIN" {
+					fmt.Println("\n🏆 VOCÊ VENCEU! Parabéns!")
+				} else {
+					fmt.Println("   Aguarde a vez do oponente...")
+				}
+			}
 		}
+
 	case "leaveMatch":
-		if playerResult := gameAction.PlayerResult; playerResult != nil{
-			menu.ShowPlayerGameEnd(playerResult)
+		if playerResult := gameAction.PlayerResult; playerResult != nil {
+			fmt.Println("\n👋 Você saiu da partida")
 		}
-	
 	}
 
 	if gameAction.GameEnded {
-		fmt.Println("\n🏆 JOGO FINALIZADO!")
 		matchState.InGame = false
+		time.Sleep(3 * time.Second)
 	}
 }
 
-// Processa atulizaçaõ do estado do jogador receptor 
-func processOpponentAction(notification response.Response, ) {
+// Processa atulizaçaõ do estado do jogador receptor
+func processOpponentAction(notification response.Response) {
 	actionResultStr, ok := notification.Data["actionResult"]
 	if !ok {
 		return
@@ -175,43 +199,39 @@ func processOpponentAction(notification response.Response, ) {
 
 	var gameAction GameAction
 	if err := json.Unmarshal([]byte(actionResultStr), &gameAction); err != nil {
-		if DEBUG_MODE {
-			fmt.Printf("Erro ao decodificar ação do oponente: %v\n", err)
-		}
 		return
+	}
+
+	if gameAction.GameEnded {
+		return 
 	}
 
 	// Atualiza estado do jogo
 	if gameAction.GameState != nil {
 		matchState.GameState = gameAction.GameState
-		
 	}
 
-	// Mostra ação do oponente
+	// Processa ações que continuam o jogo
 	switch gameAction.Action {
 	case "chooseCard":
-		if opponenteResult:= gameAction.OpponentResult; opponenteResult != nil{
-			menu.ShowOpponentResultCard(opponenteResult)
+		if opponentResult := gameAction.OpponentResult; opponentResult != nil {
+			menu.ShowOpponentResultCard(opponentResult)
 		}
-		
-		
+
 	case "attack":
 		if opponentResult := gameAction.OpponentResult; opponentResult != nil {
 			menu.ShowOpponentResultAtack(opponentResult)
 		}
-
-	case "leaveMatch":
-		if opponentResult := gameAction.OpponentResult; opponentResult != nil{
-			menu.ShowOpponentGameEnd(opponentResult)
-		}
 	}
 
-	
+	if gameAction.GameEnded {
+		matchState.InGame = false
+		time.Sleep(3 * time.Second)
+	}
 }
-
-
+// Apresenta ao jogadores o estado dos rouds 
 func showGameStatus(myName string) {
-	if matchState.GameState != nil {
+	if  matchState.InGame && matchState.GameState != nil {
 		fmt.Println("\n" + "===============================")
 		fmt.Printf("🎮 ESTADO DO JOGO\n")
 		if currentTurn, ok := matchState.GameState["currentTurn"].(string); ok {
@@ -228,30 +248,29 @@ func showGameStatus(myName string) {
 	}
 }
 
-
 func processGameNotifications() {
 	for notification := range gameNotifications {
 		switch notification.Data["type"] {
 		case "OPPONENT_ACTION":
 			processOpponentAction(notification)
-			
+
 		case "GAME_OVER":
 			fmt.Printf("\n🏆 %s\n", notification.Message)
 			matchState.InGame = false
-			
+
 		default:
 			fmt.Printf("\n📢 %s\n", notification.Message)
 		}
 	}
 }
 
-
-// Loop da partidas 
+// Loop da partidas
 func gameLoop(client *model.Client, player *models.Player, myName string) {
 	menu.ClearScreen()
 	fmt.Println("🎮 === INICIANDO JOGO ===")
-	
-	
+
+	resetGameState()
+
 	for matchState.InGame {
 		showGameStatus(myName)
 		menu.ShowGameLoop()
@@ -272,37 +291,35 @@ func gameLoop(client *model.Client, player *models.Player, myName string) {
 			client.Attack(player)
 
 		case 3:
-			fmt.Printf("⏳ Passando a vez...\n")
-			client.PassTurn(player)
-
-		case 4:
 			fmt.Printf("👋 Saindo da partida...\n")
 			client.LeaveMatch(player)
 			matchState.InGame = false
-			
+
 		}
 
 		time.Sleep(1 * time.Second)
 	}
-	
+
 	fmt.Println("\n🔙 Voltando ao lobby...")
+	resetGameState()
 	time.Sleep(2 * time.Second)
 }
+
 
 func waitForMatch(client *model.Client, player *models.Player) {
 	menu.ClearScreen()
 	fmt.Println("Entrando na fila de matchmaking...")
-	
+
 	err := client.FoundMatch(player)
 	if err != nil {
 		fmt.Printf("Erro ao entrar na fila: %v\n", err)
 		matchState.IsSearching = false
 		return
 	}
-	
+
 	matchState.IsSearching = true
 	fmt.Println("⏳ Aguardando oponente...")
-	
+
 	// Contador visual
 	dots := ""
 	for matchState.IsSearching {
@@ -310,17 +327,17 @@ func waitForMatch(client *model.Client, player *models.Player) {
 		case matchResp := <-matchFoundChannel:
 			menu.ClearScreen()
 			menu.ShowFoundMatchMake(matchResp)
-			
+
 			if matchResp.Data["yourTurn"] == "true" {
 				fmt.Println("▶️ Você começa!")
 			} else {
 				fmt.Println("⏸️ Aguarde sua vez")
 			}
-			
+
 			time.Sleep(2 * time.Second)
 			gameLoop(client, player, player.Nome)
 			return
-			
+
 		case <-time.After(1 * time.Second):
 			if matchState.IsSearching {
 				dots += "."
@@ -362,6 +379,7 @@ func main() {
 		go handleServerMessages(&client)
 		go processGameNotifications()
 
+		//Adicionar verificação caso o user ja esteja logado 
 		fmt.Println("Fazendo login...")
 		client.LoginServer(nome)
 
@@ -401,13 +419,13 @@ func main() {
 			switch opcao {
 			case 1:
 				waitForMatch(&client, player)
-				
+
 			case 2:
 				menu.ClearScreen()
 				fmt.Println("Saindo do jogo...")
 				client.LeaveServer(player.Nome)
 				return
-				
+
 			default:
 				fmt.Println("⚠️ Opção inválida")
 				time.Sleep(1 * time.Second)
@@ -416,7 +434,7 @@ func main() {
 	}
 	if opcao == 2 {
 		fmt.Println("Saindo do server...")
-				
-				return
+
+		return
 	}
 }
