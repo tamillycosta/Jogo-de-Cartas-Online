@@ -24,6 +24,7 @@ type Lobby struct {
 	WaitQueue []*WaitingPlayer
 	Matchs    map[string]*Match
 	DB        *gorm.DB
+    ConnectionMonitor *ConnectionMonitor 
 }
 
 
@@ -191,12 +192,27 @@ func (lobby *Lobby) DeletePlayer(req request.Request, conn net.Conn) response.Re
 
 
 
-
-
-
-
-
-
+// Pega status das conexões atuais no servidor
+func (lobby *Lobby) GetConnectionStats(req request.Request, conn net.Conn) response.Response {
+    resp := response.Response{}
+    
+    if lobby.ConnectionMonitor == nil {
+        return resp.MakeErrorResponse(500, "Monitor não inicializado", "")
+    }
+    
+    stats := lobby.ConnectionMonitor.GetStats()
+    
+    // Adiciona estatísticas do lobby
+    lobby.Mu.RLock()
+    stats["totalPlayers"] = len(lobby.Players)
+    stats["waitingPlayers"] = len(lobby.WaitQueue)
+    stats["activeMatches"] = len(lobby.Matchs)
+    lobby.Mu.RUnlock()
+    
+    return resp.MakeSuccessResponse("Estatísticas de conexão", map[string]string{
+        "stats": utils.Encode(stats),
+    })
+}
 
 
 
@@ -222,17 +238,25 @@ func (lobby *Lobby) isLog(username string) bool {
 
 // status do siistema
 func (l *Lobby) PrintStats() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
 
-	for range ticker.C {
-		l.Mu.RLock()
-		totalUsers := len(l.Players)
-		waitingUsers := len(l.WaitQueue)
-		activeChats := len(l.Matchs)
-		l.Mu.RUnlock()
+    for range ticker.C {
+        l.Mu.RLock()
+        totalUsers := len(l.Players)
+        waitingUsers := len(l.WaitQueue)
+        activeMatches := len(l.Matchs)
+        l.Mu.RUnlock()
 
-		log.Printf("Stats: %d usuários conectados, %d na fila, %d chats ativos",
-			totalUsers, waitingUsers, activeChats)
-	}
+        log.Printf("Stats: %d usuários conectados, %d na fila, %d partidas ativas",
+            totalUsers, waitingUsers, activeMatches)
+            
+        // Estatísticas de conexão
+        if l.ConnectionMonitor != nil {
+            stats := l.ConnectionMonitor.GetStats()
+            if problematic, ok := stats["problematicConnections"].(int); ok && problematic > 0 {
+                log.Printf("⚠️ Conexões com problemas: %d", problematic)
+            }
+        }
+    }
 }

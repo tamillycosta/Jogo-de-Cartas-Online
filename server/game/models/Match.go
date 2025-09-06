@@ -83,10 +83,7 @@ func NewMatch(player1 *Player, player2 *Player) *Match {
 	return match
 }
 
-
-
 // Processa as jogadas de um player na partida
-
 func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) response.Response {
 	resp := response.Response{}
 
@@ -108,7 +105,7 @@ func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) respon
 		return resp.MakeErrorResponse(400, "Partida já finalizada", "")
 	}
 
-	// Possiveis ações de jogador 
+	// Possiveis ações de jogador
 	var actionResult GameActionResult
 	switch req.Params["action"] {
 	case ACTION_CHOOSE_CARD:
@@ -120,8 +117,6 @@ func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) respon
 	default:
 		return resp.MakeErrorResponse(400, "Ação não reconhecida", "")
 	}
-
-	
 
 	if actionResult.Success {
 		opponent := lobby.GetOpponent(match, player)
@@ -194,7 +189,6 @@ func (lobby *Lobby) ProcessChoseCard(match *Match, currentPlayer *Player, req re
 			Message: "Esta carta ja esta sem vida, escolha outra para batalhar",
 		}
 	}
-
 
 	return GameActionResult{
 		Success: true,
@@ -320,49 +314,6 @@ func (lobby *Lobby) ProcessAttack(match *Match, currentPlayer *Player, req reque
 	return lobby.processAttackStatus(match, currentPlayer, attackPower, damageResult)
 }
 
-func (lobby *Lobby) processAttackStatus(match *Match, currentPlayer *Player, attackPower int, damageResult DamageResult) GameActionResult {
-
-	return GameActionResult{
-		Success:   true,
-		Action:    ACTION_ATTACK,
-		Message:   fmt.Sprintf("%s atacou com poder %d", currentPlayer.Nome, attackPower),
-		GameEnded: damageResult.GameEnded,
-		Winner:    damageResult.Winner,
-		PlayerResult: map[string]interface{}{
-			"attackPower":    attackPower,
-			"opponentLife":   damageResult.OpponentLifeRemaining,
-			"opponentCardHP": damageResult.OpponentCardHP,
-
-			"result": func() string {
-				if damageResult.GameEnded {
-					return "WIN"
-				}
-				return "ATTACK_SUCCESS"
-			}(),
-		},
-		OpponentResult: map[string]interface{}{
-			"damageTaken":     attackPower,
-			"lifeRemaining":   damageResult.OpponentLifeRemaining,
-			"cardHPRemaining": damageResult.OpponentCardHP,
-
-			"result": func() string {
-				if damageResult.GameEnded {
-					return "LOSS"
-				}
-				return "DAMAGE_TAKEN"
-			}(),
-		},
-		GameState: map[string]interface{}{
-			"currentTurn": func() string {
-				if damageResult.GameEnded {
-					return "GAME_OVER"
-				}
-				return lobby.GetOpponent(match, currentPlayer).Nome
-			}(),
-			"roundId": match.Round.ID,
-		},
-	}
-}
 
 // Processa saída de um jogador da partida
 func (lobby *Lobby) ProcessLeaveMatch(match *Match, leavingPlayer *Player) GameActionResult {
@@ -433,20 +384,17 @@ func (lobby *Lobby) SwitchTurn(match *Match) {
 	match.Round.ID++
 }
 
-
-
 // Retira a partida finalizada do lobby
 func (lobby *Lobby) CleanupFinishedMatch(match *Match, winner *Player) {
 	fmt.Printf("🧹 Limpando match finalizado: %s\n", match.ID)
 
-	
 	lobby.Mu.Lock()
 	delete(lobby.Matchs, match.ID)
 
 	// Limpa referências dos players
 	if match.Player1 != nil {
 		match.Player1.Match = nil
-		
+
 	}
 	if match.Player2 != nil {
 		match.Player2.Match = nil
@@ -460,7 +408,6 @@ func (lobby *Lobby) CleanupFinishedMatch(match *Match, winner *Player) {
 		fmt.Printf("🏆 %s ganhou 100 pontos! Score total: %d\n", winner.Nome, winner.Score)
 	}
 }
-
 
 func (match *Match) ChoseStartPlayer(player1 Player, player2 Player) {
 	if rand.Intn(2) == 0 {
