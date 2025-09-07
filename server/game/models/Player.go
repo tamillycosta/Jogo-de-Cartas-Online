@@ -22,9 +22,9 @@ type Player struct {
 func CreateAccount(req request.Request, conn net.Conn) Player {
 	id := uuid.NewString()
 	username := req.Params["nome"]
+    starterCards := GenerateInicialCards(id)
 	score := 0
-	var cards []*Card
-	player := &Player{ID: id, Nome: username, Score: score, Cards: cards, Conn: conn}
+	player := &Player{ID: id, Nome: username, Score: score, Cards: starterCards, Conn: conn}
 	return *player
 
 }
@@ -33,9 +33,7 @@ func CreateAccount(req request.Request, conn net.Conn) Player {
 func (lobby *Lobby) AddCard(player *Player) {
     count := 3 
     for i := 0; i < count; i++ {
-        card := NewCard(player)
-        player.Cards = append(player.Cards, &card)
-        lobby.DB.Create(&card) 
+        lobby.DB.Create(&player.Cards[i]) 
     }
 }
 
@@ -76,10 +74,6 @@ func (lobby *Lobby) ChooseCard(player Player, cardIndex int) *Card {
 
 
 func (player *Player) Atack() int {
-
-	return player.Cards[0].Power
+	return player.CurrentCard.Power
 }
 
-func (p *Player) LeaveServer() {
-	p.Conn.Close()
-}
