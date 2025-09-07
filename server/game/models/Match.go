@@ -227,6 +227,7 @@ func (lobby *Lobby) applyDamage(match *Match, opponent *Player, attackPower int)
 		winner = match.Player1 // Se Player2 morrer, Player1 ganha
 	}
 
+
 	cardHP := opponent.CurrentCard.Health
 
 	// Aplica dano primeiro na carta
@@ -247,7 +248,7 @@ func (lobby *Lobby) applyDamage(match *Match, opponent *Player, attackPower int)
 	if gameEnded {
 		match.Status = GAME_STATUS_ENDED
 		finalWinner = winner
-
+		match.RestoreCardsHp()
 	}
 
 	return DamageResult{
@@ -415,4 +416,20 @@ func (match *Match) ChoseStartPlayer(player1 Player, player2 Player) {
 	} else {
 		match.Round.Sender = &player2
 	}
+}
+
+func (match *Match) RestoreCardsHp(){
+
+	for i := 0; i < 2; i++ {
+		card := match.Player1.Cards[i]
+		templateCard := BaseCards[card.TemplateID]
+		match.Player1.Cards[i].Health = templateCard.Health
+	}
+
+	for i := 0; i < 2; i++ {
+		card := match.Player2.Cards[i]
+		templateCard := BaseCards[card.TemplateID]
+		match.Player2.Cards[i].Health = templateCard.Health
+	}
+	
 }
