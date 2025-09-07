@@ -1,25 +1,25 @@
 package model
 
 import (
+	"bufio"
+	"encoding/json"
 	request "jogodecartasonline/api/Request"
 	response "jogodecartasonline/api/Response"
 	"jogodecartasonline/server/game/models"
-	"bufio"
-	"encoding/json"
 
 	"fmt"
 	"net"
 )
 
 type Client struct {
-	Nome string
-	Conn net.Conn
+	Nome   string
+	Conn   net.Conn
 	Reader *bufio.Reader
 }
 
+// --------------------- Requisições Basicas do lobby
 
-
-// requisição de login do usuario no server
+// requisição para login do usuario no server
 func (c *Client) LoginServer(name string) error {
 	req := request.Request{
 		User:   name,
@@ -31,17 +31,17 @@ func (c *Client) LoginServer(name string) error {
 	return c.SendRequest(req)
 }
 
-func (c *Client) LeaveServer(username string) error{
-    req := request.Request{
-        User: username,
-        Method: "DeletePlayer",
-        Params: map[string]string{
+// requisição para sair do servidor
+func (c *Client) LeaveServer(username string) error {
+	req := request.Request{
+		User:   username,
+		Method: "DeletePlayer",
+		Params: map[string]string{
 			"nome": username,
 		},
-    }
-    return c.SendRequest(req)
+	}
+	return c.SendRequest(req)
 }
-
 
 // requisição para achar uma partida
 func (c *Client) FoundMatch(player *models.Player) error {
@@ -57,107 +57,100 @@ func (c *Client) FoundMatch(player *models.Player) error {
 	return c.SendRequest(req)
 }
 
-// Player escolhe carta
+// requisições para verificar status do pacote
+func (c *Client) CheckPackStatus(username string) error {
+	req := request.Request{
+		User:   username,
+		Method: "packStatus",
+		Params: map[string]string{},
+	}
+	return c.SendRequest(req)
+
+}
+
+// --------------------- Requisições para os pacotes
+
+// requisições de abrir pacote
+func (c *Client) OpenPack(username string) error {
+	req := request.Request{
+		User:   username,
+		Method: "openPack",
+		Params: map[string]string{},
+	}
+	return c.SendRequest(req)
+}
+
+//----------------- Requisições de um match
+
+// requisição para escolher carta
 func (c *Client) ChooseCard(player *models.Player, cardIndex int) error {
-    req := request.Request{
-        User:   player.Nome,
-        Method: "ProcessGameAction",
-        Params: map[string]string{
-            "action" : "chooseCard",
-            "cardIndex": fmt.Sprintf("%d", cardIndex),
-            
-        },
-    }
-    return c.SendRequest(req)
+	req := request.Request{
+		User:   player.Nome,
+		Method: "ProcessGameAction",
+		Params: map[string]string{
+			"action":    "chooseCard",
+			"cardIndex": fmt.Sprintf("%d", cardIndex),
+		},
+	}
+	return c.SendRequest(req)
 }
 
-// Player ataca
+// requisição para atacar
 func (c *Client) Attack(player *models.Player) error {
-    req := request.Request{
-        User:   player.Nome,
-        Method: "ProcessGameAction",
-        Params: map[string]string{
-            "action" : "attack",
-        },
-    }
-    return c.SendRequest(req)
+	req := request.Request{
+		User:   player.Nome,
+		Method: "ProcessGameAction",
+		Params: map[string]string{
+			"action": "attack",
+		},
+	}
+	return c.SendRequest(req)
 }
 
-// Player passa a vez
-func (c *Client) PassTurn(player *models.Player) error {
-    req := request.Request{
-        User:   player.Nome,
-        Method: "ProcessGameAction",
-        Params: map[string]string{},
-    }
-    return c.SendRequest(req)
-}
-
-// Player sai da partida
+// requisição para sair da partida
 func (c *Client) LeaveMatch(player *models.Player) error {
-    req := request.Request{
-        User:   player.Nome,
-        Method: "ProcessGameAction",
-        Params: map[string]string{
-           "action": "leaveMatch",
-        },
-    }
-    return c.SendRequest(req)
+	req := request.Request{
+		User:   player.Nome,
+		Method: "ProcessGameAction",
+		Params: map[string]string{
+			"action": "leaveMatch",
+		},
+	}
+	return c.SendRequest(req)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // -----  METODOS AUXILIARES ------
 func (c *Client) SendRequest(req request.Request) error {
-    dados, err := json.Marshal(req)
-    if err != nil {
-        return err
-    }
-    
-    message := append(dados, '\n')
-    
-    _, err = c.Conn.Write(message)
-    return err
+	dados, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	message := append(dados, '\n')
+
+	_, err = c.Conn.Write(message)
+	return err
 }
-
-
 
 // Recebe resposta do servidor
 func (c *Client) ReceiveResponse() (response.Response, error) {
-   
-    line, err := c.Reader.ReadBytes('\n')
-    if err != nil {
-        return response.Response{}, err
-    }
-    
-    line = line[:len(line)-1]
-    
-    
-    var resp response.Response
-    err = json.Unmarshal(line, &resp)
-    if err != nil {
-        fmt.Printf(" Erro ao unmarshall: %v\n", err)
-        return response.Response{}, err
-    }
-    
-    return resp, nil
-}
 
+	line, err := c.Reader.ReadBytes('\n')
+	if err != nil {
+		return response.Response{}, err
+	}
+
+	line = line[:len(line)-1]
+
+	var resp response.Response
+	err = json.Unmarshal(line, &resp)
+	if err != nil {
+		fmt.Printf(" Erro ao unmarshall: %v\n", err)
+		return response.Response{}, err
+	}
+
+	return resp, nil
+}
 
 func DecodePlayer(data interface{}) (*models.Player, error) {
 	playerJSON, ok := data.(string)

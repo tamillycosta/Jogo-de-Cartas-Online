@@ -27,8 +27,12 @@ type Lobby struct {
     ConnectionMonitor *ConnectionMonitor 
 }
 
+var GlobalPackSystem = &PackSystem{
+    LastPackTime: make(map[string]time.Time),
+    PackCooldown: 1 * time.Minute,
+}
 
-
+// Rotas visiveis 
 
 // Metodo Responssavel por adicionar um jogador ao Lobby
 func (lobby *Lobby) AddPlayer(req request.Request, conn net.Conn) response.Response {
@@ -69,29 +73,28 @@ func (lobby *Lobby) AddPlayer(req request.Request, conn net.Conn) response.Respo
     })
 }
 
-// Metodo Responssavel por adicionar jogador a lista de espera para encontrar uma partida
-func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingPlayer {
-    playerJson := req.Params["player"]
+// Metodo Responssavel por desligar um player do server 
+func (lobby *Lobby) DeletePlayer(req request.Request, conn net.Conn) response.Response{
+	lobby.Mu.Lock()
+    defer lobby.Mu.Unlock()
 
-    var player Player
-    if err := json.Unmarshal([]byte(playerJson), &player); err != nil {
-        return nil
-    }
+	resp := response.Response{}
+    username := req.Params["nome"]
 
-    waitingPlayer := &WaitingPlayer{
-        Player: &player,
-        Conn:   conn,
-      
-    }
+	if !lobby.isLog(username){
+		return resp.MakeErrorResponse(403, "Ação proibida - User Não Esta Conectado", "403 Forbidden")
+	}
 
-    lobby.Mu.Lock()
-    lobby.WaitQueue = append(lobby.WaitQueue, waitingPlayer)
-    lobby.Mu.Unlock()
+	player := lobby.Players[username]
+	delete(lobby.Players, username)
+	
 
-    return waitingPlayer
+	return resp.MakeSuccessResponse("Jogador removido do server com sucesso", map[string]string{
+        "player": utils.Encode(player),
+    })
 }
 
-// Tenta combinar dois players em uma partida
+// Metodo Responssavel por criar uma partida entre dois jogadores 
 func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.Response {
 	resp := response.Response{}
 	
@@ -167,73 +170,92 @@ func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.R
 	}
 }
 
-
-
-
-func (lobby *Lobby) DeletePlayer(req request.Request, conn net.Conn) response.Response{
-	lobby.Mu.Lock()
-    defer lobby.Mu.Unlock()
-
-	resp := response.Response{}
-    username := req.Params["nome"]
-
-	if !lobby.isLog(username){
-		return resp.MakeErrorResponse(403, "Ação proibida - User Não Esta Conectado", "403 Forbidden")
-	}
-
-	player := lobby.Players[username]
-	delete(lobby.Players, username)
-	
-
-	return resp.MakeSuccessResponse("Jogador removido do server com sucesso", map[string]string{
-        "player": utils.Encode(player),
-    })
-}
-
-
-
-// Pega status das conexões atuais no servidor
-func (lobby *Lobby) GetConnectionStats(req request.Request, conn net.Conn) response.Response {
+// Metodo Responssavel por verificar status do pacote um jogador
+func (lobby *Lobby) CheckPackStatus(req request.Request, conn net.Conn) response.Response {
     resp := response.Response{}
     
-    if lobby.ConnectionMonitor == nil {
-        return resp.MakeErrorResponse(500, "Monitor não inicializado", "")
+    playerName := req.User
+    player := lobby.Players[playerName]
+    
+    if player == nil {
+        return resp.MakeErrorResponse(404, "Player não encontrado", "")
     }
     
-    stats := lobby.ConnectionMonitor.GetStats()
+    canOpen, remaining := GlobalPackSystem.CanOpenPack(player.ID)
     
-    // Adiciona estatísticas do lobby
-    lobby.Mu.RLock()
-    stats["totalPlayers"] = len(lobby.Players)
-    stats["waitingPlayers"] = len(lobby.WaitQueue)
-    stats["activeMatches"] = len(lobby.Matchs)
-    lobby.Mu.RUnlock()
+   
+    return resp.MakeSuccessResponse("Status verificado", map[string]string{
+        "type":       "CHECKPACKAGE", 
+        "canOpen":    fmt.Sprintf("%t", canOpen),
+        "remaining":  remaining.String(),
+        "totalCards": fmt.Sprintf("%d", len(player.Cards)),
+    })
+}
+
+// Metodo Responssavel por abir pacote de um joagdor 
+func (lobby *Lobby) OpenCardPack(req request.Request, conn net.Conn) response.Response {
+    resp := response.Response{}
+    username := req.User
+    player := lobby.Players[username]
     
-    return resp.MakeSuccessResponse("Estatísticas de conexão", map[string]string{
-        "stats": utils.Encode(stats),
+    if player == nil {
+        return resp.MakeErrorResponse(404, "Player não encontrado", "")
+    }
+    
+    // Verifica se pode abrir
+    canOpen, remaining := GlobalPackSystem.CanOpenPack(player.ID)
+    if !canOpen {
+        return resp.MakeErrorResponse(400, "Pacote em cooldown", remaining.String())
+    }
+    
+    // Abre pacote
+    newCards, err := GlobalPackSystem.OpenPack(player.ID)
+    if err != nil {
+        return resp.MakeErrorResponse(500, "Erro ao abrir pacote", err.Error())
+    }
+
+    // Salva novas cartas
+    for _, card := range newCards {
+        lobby.DB.Create(card)
+        player.Cards = append(player.Cards, card)
+    }
+    lobby.DB.Save(player)
+    
+    return resp.MakeSuccessResponse("Pacote aberto!", map[string]string{
+        "type":       "PACKAGE_OPENED",
+        "cards":      utils.Encode(newCards),
+        "totalCards": fmt.Sprintf("%d", len(player.Cards)),
     })
 }
 
 
 
 
-// Remove player da fila (em caso de timeout ou desconexão)
-func (lobby *Lobby) RemoveFromQueue(targetPlayer *WaitingPlayer) {
-	lobby.Mu.Lock()
-	defer lobby.Mu.Unlock()
 
-	for i, waitingPlayer := range lobby.WaitQueue {
-		if waitingPlayer == targetPlayer {
-			lobby.WaitQueue = append(lobby.WaitQueue[:i], lobby.WaitQueue[i+1:]...)
-			break
-		}
-	}
-}
 
-// Verifica se o User esta logado
-func (lobby *Lobby) isLog(username string) bool {
-	_, ok := lobby.Players[username]
-	return ok
+
+// Auxliares
+
+// Metodo Responssavel por adicionar jogador a lista de espera para encontrar uma partida
+func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingPlayer {
+    playerJson := req.Params["player"]
+
+    var player Player
+    if err := json.Unmarshal([]byte(playerJson), &player); err != nil {
+        return nil
+    }
+
+    waitingPlayer := &WaitingPlayer{
+        Player: &player,
+        Conn:   conn,
+      
+    }
+
+    lobby.Mu.Lock()
+    lobby.WaitQueue = append(lobby.WaitQueue, waitingPlayer)
+    lobby.Mu.Unlock()
+
+    return waitingPlayer
 }
 
 // status do siistema
@@ -259,4 +281,50 @@ func (l *Lobby) PrintStats() {
             }
         }
     }
+}
+
+
+// Pega status das conexões atuais no servidor
+func (lobby *Lobby) GetConnectionStats(req request.Request, conn net.Conn) response.Response {
+    resp := response.Response{}
+    
+    if lobby.ConnectionMonitor == nil {
+        return resp.MakeErrorResponse(500, "Monitor não inicializado", "")
+    }
+    
+    stats := lobby.ConnectionMonitor.GetStats()
+    
+    // Adiciona estatísticas do lobby
+    lobby.Mu.RLock()
+    stats["totalPlayers"] = len(lobby.Players)
+    stats["waitingPlayers"] = len(lobby.WaitQueue)
+    stats["activeMatches"] = len(lobby.Matchs)
+    lobby.Mu.RUnlock()
+    
+    return resp.MakeSuccessResponse("Estatísticas de conexão", map[string]string{
+        "stats": utils.Encode(stats),
+    })
+}
+
+
+// Remove player da fila (em caso de timeout ou desconexão)
+func (lobby *Lobby) RemoveFromQueue(targetPlayer *WaitingPlayer) {
+	lobby.Mu.Lock()
+	defer lobby.Mu.Unlock()
+
+	for i, waitingPlayer := range lobby.WaitQueue {
+		if waitingPlayer == targetPlayer {
+			lobby.WaitQueue = append(lobby.WaitQueue[:i], lobby.WaitQueue[i+1:]...)
+			break
+		}
+	}
+}
+
+
+
+
+// Verifica se o User esta logado
+func (lobby *Lobby) isLog(username string) bool {
+	_, ok := lobby.Players[username]
+	return ok
 }
