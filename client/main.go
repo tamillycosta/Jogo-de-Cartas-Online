@@ -2,27 +2,20 @@ package main
 
 import (
 	"bufio"
-
 	"fmt"
 	response "jogodecartasonline/api/Response"
 	"jogodecartasonline/client/model"
 	"jogodecartasonline/client/screm"
 	"jogodecartasonline/server/game/models"
+	"jogodecartasonline/utils"
 	"net"
-
+	"os"
 	"time"
 )
 
 var Menu screm.Screm
 
 // Estados do matchmaking
-type MatchmakingState struct {
-	IsSearching bool
-	InGame      bool
-	CurrentTurn string
-	GameState   map[string]interface{}
-}
-
 var matchState = &MatchmakingState{}
 
 // Channels para comunicação
@@ -32,8 +25,13 @@ var (
 	gameNotifications = make(chan response.Response, 10)
 )
 
+var inputManager = &utils.InputManager{
+	Scanner: bufio.NewScanner(os.Stdin),
+	Active:  true,
+}
+
 // Configuração para debug
-const DEBUG_MODE = false // Mude para true se quiser ver debug
+const DEBUG_MODE = false
 
 // Estrutura para dados da ação decodificados
 type GameAction struct {
@@ -47,9 +45,10 @@ type GameAction struct {
 }
 
 func resetGameState() {
+	matchState.mu.Lock()
+	defer matchState.mu.Unlock()
 	matchState.GameState = nil
 	matchState.CurrentTurn = ""
-
 }
 
 // Decodifica os responses do servidor
@@ -61,6 +60,11 @@ func handleServerMessages(client *model.Client) {
 		if err != nil {
 			fmt.Printf("❌ Erro ao receber: %v\n", err)
 			return
+		}
+
+		// Debug para ver todas as mensagens
+		if DEBUG_MODE {
+			fmt.Printf("🔍 DEBUG - Resposta recebida: %+v\n", resp)
 		}
 
 		// Verifica se é ping do servidor
@@ -84,9 +88,7 @@ func handleServerMessages(client *model.Client) {
 			matchFoundChannel <- resp
 
 		case "GAME_ENDED":
-
 			fmt.Println("\n🏆 JOGO FINALIZADO!")
-
 			result := resp.Data["result"]
 			winner := resp.Data["winner"]
 			reason := resp.Data["reason"]
@@ -107,8 +109,6 @@ func handleServerMessages(client *model.Client) {
 			}
 
 			matchState.InGame = false
-
-			// Pequena pausa para ler resultado
 			time.Sleep(3 * time.Second)
 
 		case "OPPONENT_ACTION":
@@ -118,13 +118,13 @@ func handleServerMessages(client *model.Client) {
 			fmt.Println("\n🏆 JOGO FINALIZADO!")
 			gameNotifications <- resp
 
-		case "CHECKPACKAGE": 
+		case "PACKAGE_STATUS":
 			fmt.Println("📦 Status do pacote recebido")
-			ProcessPackageResponse(resp)
+			ProcessPackageStatus(resp, client)
 
 		case "PACKAGE_OPENED":
-			fmt.Println("📦 Pacote aberto!")
-			ProcessPackageOpenResponse(resp)
+			fmt.Println("🎁 Pacote aberto recebido")
+			ProcessPackageOpened(resp, client)
 
 		default:
 			if resp.Message == "Procurando partida..." {
@@ -138,6 +138,11 @@ func handleServerMessages(client *model.Client) {
 
 			} else if resp.Message == "Ação processada" {
 				ProcessPlayerActionResponse(resp)
+
+			} else if resp.Message == "Pacote aberto!" {
+				fmt.Println("🎁 Processando pacote aberto...")
+				ProcessPackageOpened(resp, client)
+
 			} else {
 				fmt.Printf("📩 %s\n", resp.Message)
 			}
@@ -160,8 +165,6 @@ func ProcessGameNotifications() {
 		}
 	}
 }
-
-// Processa atulizaçaõ do estado do jogador
 
 func main() {
 	Menu.ClearScreen()
@@ -192,7 +195,6 @@ func main() {
 		go handleServerMessages(&client)
 		go ProcessGameNotifications()
 
-		//Adicionar verificação caso o user ja esteja logado
 		fmt.Println("Fazendo login...")
 		client.LoginServer(nome)
 
@@ -217,25 +219,39 @@ func main() {
 			return
 		}
 
-		// LOBBY PRINCIPAL
+		// LOBBY PRINCIPAL 
 		for {
-			if matchState.IsSearching || matchState.InGame {
-				time.Sleep(1 * time.Second)
+			// Verifica se está no sistema de pacotes
+			if IsPackageMenuActive() || IsWaitingForPackage(){
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+
+			// Verifica se está em matchmaking ou jogo
+			if matchState.IsInAnyState() {
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
 			Menu.ClearScreen()
 			fmt.Printf("Bem-vindo, %s!\n\n", player.Nome)
 			Menu.ShowLobbyMenu()
-			fmt.Scanln(&opcao)
+
+			fmt.Print("Escolha: ")
+			opcao, err := inputManager.ReadInt()
+			if err != nil {
+				fmt.Println("⚠️ Entrada inválida")
+				time.Sleep(1 * time.Second)
+				continue
+			}
 
 			switch opcao {
 			case 1:
 				WaitForMatch(&client, player)
 
 			case 2:
-				Menu.ClearScreen()
-				TryOpenPackage(player.Nome, &client)
+				fmt.Println("🎁 Entrando no sistema de pacotes...")
+				EnterPackageSystem(&client, player.Nome)
 
 			case 3:
 				Menu.ClearScreen()
@@ -249,9 +265,9 @@ func main() {
 			}
 		}
 	}
+
 	if opcao == 2 {
 		fmt.Println("Saindo do server...")
-
 		return
 	}
 }
