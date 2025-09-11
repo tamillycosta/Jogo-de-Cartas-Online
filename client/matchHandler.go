@@ -7,7 +7,12 @@ import (
 	"jogodecartasonline/client/model"
 	"jogodecartasonline/server/game/models"
 	"time"
+	
 )
+
+
+
+
 
 func ProcessPlayerActionResponse(resp response.Response) {
 	resultStr, ok := resp.Data["result"]
@@ -27,8 +32,11 @@ func ProcessPlayerActionResponse(resp response.Response) {
 
 	// Atualiza estado do jogo
 	if gameAction.GameState != nil {
+		matchState.mu.Lock()
 		matchState.GameState = gameAction.GameState
+		matchState.mu.Unlock()
 	}
+
 
 	// Processa resultado da própria ação
 	switch gameAction.Action {
@@ -79,8 +87,11 @@ func ProcessOpponentAction(notification response.Response) {
 
 	// Atualiza estado do jogo
 	if gameAction.GameState != nil {
+		matchState.mu.Lock()
 		matchState.GameState = gameAction.GameState
+		matchState.mu.Unlock()
 	}
+
 
 	// Processa ações que continuam o jogo
 	switch gameAction.Action {
@@ -103,6 +114,9 @@ func ProcessOpponentAction(notification response.Response) {
 
 // Apresenta ao jogadores o estado dos rouds
 func ShowGameStatus(myName string) {
+	matchState.mu.RLock()
+	defer matchState.mu.RUnlock()
+	
 	if matchState.InGame && matchState.GameState != nil {
 		fmt.Println("\n" + "===============================")
 		fmt.Printf("🎮 ESTADO DO JOGO\n")
@@ -121,7 +135,6 @@ func ShowGameStatus(myName string) {
 }
 
 
-
 // Loop da partidas
 func gameLoop(client *model.Client, player *models.Player, myName string) {
 	Menu.ClearScreen()
@@ -129,18 +142,35 @@ func gameLoop(client *model.Client, player *models.Player, myName string) {
 
 	resetGameState()
 
-	for matchState.InGame {
+	for {
+		// Verifica se ainda está no jogo
+		matchState.mu.RLock()
+		inGame := matchState.InGame
+		matchState.mu.RUnlock()
+		
+		if !inGame {
+			break
+		}
+
 		ShowGameStatus(myName)
 		Menu.ShowGameLoop()
 
-		var opcao int
-		fmt.Scanln(&opcao)
+		opcao, err := inputManager.ReadInt()
+		if err != nil {
+			
+			time.Sleep(1 * time.Second)
+			continue
+		}
 
 		switch opcao {
 		case 1:
 			fmt.Print("Escolha uma carta (0-2): ")
-			var cardIndex int
-			fmt.Scanln(&cardIndex)
+			cardIndex, err := inputManager.ReadInt()
+			if err != nil {
+				fmt.Println("⚠️ Índice inválido!")
+				time.Sleep(1 * time.Second)
+				continue
+			}
 			fmt.Printf("⏳ Escolhendo carta %d...\n", cardIndex)
 			client.ChooseCard(player, cardIndex)
 
@@ -151,8 +181,10 @@ func gameLoop(client *model.Client, player *models.Player, myName string) {
 		case 3:
 			fmt.Printf("👋 Saindo da partida...\n")
 			client.LeaveMatch(player)
-			matchState.InGame = false
-
+			matchState.SetInGame(false)
+		
+		default:
+			fmt.Println("⚠️ Opção inválida!")
 		}
 
 		time.Sleep(1 * time.Second)
@@ -171,16 +203,24 @@ func WaitForMatch(client *model.Client, player *models.Player) {
 	err := client.FoundMatch(player)
 	if err != nil {
 		fmt.Printf("Erro ao entrar na fila: %v\n", err)
-		matchState.IsSearching = false
+		matchState.SetSearching(false)
 		return
 	}
 
-	matchState.IsSearching = true
+	matchState.SetSearching(true)
 	fmt.Println("⏳ Aguardando oponente...")
 
 	// Contador visual
 	dots := ""
-	for matchState.IsSearching {
+	for {
+		matchState.mu.RLock()
+		searching := matchState.IsSearching
+		matchState.mu.RUnlock()
+		
+		if !searching {
+			break
+		}
+
 		select {
 		case matchResp := <-matchFoundChannel:
 			Menu.ClearScreen()
@@ -197,7 +237,11 @@ func WaitForMatch(client *model.Client, player *models.Player) {
 			return
 
 		case <-time.After(1 * time.Second):
-			if matchState.IsSearching {
+			matchState.mu.RLock()
+			stillSearching := matchState.IsSearching
+			matchState.mu.RUnlock()
+			
+			if stillSearching {
 				dots += "."
 				if len(dots) > 3 {
 					dots = ""

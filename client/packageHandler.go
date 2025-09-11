@@ -6,178 +6,182 @@ import (
 	response "jogodecartasonline/api/Response"
 	"jogodecartasonline/client/model"
 	"jogodecartasonline/server/game/models"
+
 	"time"
 )
 
-// Estados do sistema de pacotes
-type PackageState struct {
-	CanOpen       bool
-	Remaining     string
-	TotalCards    int
-	NewCards      []models.Card
-	InPackageMenu bool
+
+// Envia a requisição de status do pacote
+func EnterPackageSystem(client *model.Client, username string) {
+	fmt.Println("📦 Verificando status dos pacotes...")
+	SetPackageMenuActive(true)
+	SetWaitingForPackage(false)
+
+
+	err := client.CheckPackStatus(username)
+	if err != nil {
+		fmt.Printf("❌ Erro ao verificar pacotes: %v\n", err)
+		time.Sleep(2 * time.Second)
+		SetPackageMenuActive(false)
+		return
+	}
+
+	
 }
 
-var packageState = &PackageState{}
 
-func ProcessPackageResponse(resp response.Response) {
-	fmt.Println("📋 Processando status do pacote...")
+// Envia a requisição para abertura de pacotes
+func openPackage(client *model.Client) {
+	fmt.Println("📦 Enviando requisição...")
 
-	canOpenStr := resp.Data["canOpen"]
+	// Define como aguardando ANTES de enviar a requisição
+	SetWaitingForPackage(true)
+
+	err := client.OpenPack(client.Nome)
+
+	if err != nil {
+		fmt.Printf("❌ Erro ao abrir pacote: %v\n", err)
+		SetWaitingForPackage(false) // Libera em caso de erro
+		// Não sai do sistema - permite tentar novamente
+		return
+	}
+
+	fmt.Println("⏳ Aguardando resposta do servidor...")
+	// Não precisa definir WaitingForPackage aqui novamente
+}
+
+
+// Processa a requisição para status do pacote
+func ProcessPackageStatus(resp response.Response, client *model.Client) {
+	canOpen := resp.Data["canOpen"] == "true"
 	remaining := resp.Data["remaining"]
 	totalCards := resp.Data["totalCards"]
 
-	
-	canOpen := canOpenStr == "true"
-
-	packageState.CanOpen = canOpen
-	packageState.Remaining = remaining
-	packageState.TotalCards = parseInt(totalCards)
-
+	Menu.ClearScreen()
 	if canOpen {
-		PackageMenu()
+		PackageMenu(client, totalCards)
 	} else {
-		CooldownMenu()
+		CooldownMenu(client, totalCards, remaining)
 	}
 }
 
-func ProcessPackageOpenResponse(resp response.Response) {
+// Processa a requisição da abertura de pacotes
+func ProcessPackageOpened(resp response.Response, client *model.Client) {
 	cardsStr := resp.Data["cards"]
 	totalCards := resp.Data["totalCards"]
 
-	// Decodifica as cartas recebidas
 	var newCards []models.Card
 	if err := json.Unmarshal([]byte(cardsStr), &newCards); err != nil {
 		fmt.Printf("Erro ao decodificar cartas: %v\n", err)
+		SetWaitingForPackage(false) 
 		return
 	}
 
-	// Mostra cartas obtidas
+	SetWaitingForPackage(false)
+
+	showOpenedPackage(newCards, totalCards)
+}
+
+
+
+
+// --------------------- Auxliliares 
+
+
+func showOpenedPackage(newCards []models.Card, totalCards string) {
 	Menu.ClearScreen()
-	fmt.Println("✨ === PACOTE ABERTO! ===")
-	fmt.Printf("Total de cartas: %s\n\n", totalCards)
-	fmt.Println("Cartas obtidas:")
+	Menu.ShowOpenPackResult(totalCards)
 
 	for i, card := range newCards {
-		fmt.Printf("%d. %s (Poder: %d, Vida: %d, Raridade: %s)\n",
-			i+1, card.Nome, card.Power, card.Health, card.Rarity)
+		rarity := Menu.GetRarityEmoji(card.Rarity)
+		fmt.Printf("  %d. %s %s (⚔️%d 💚%d)\n",
+			i+1, rarity, card.Nome, card.Power, card.Health)
 	}
 
-	fmt.Println("\nPressione Enter para continuar...")
-	fmt.Scanln()
+	fmt.Println("Aperte qualquer tecla para voltar ao lobby")
 
-	packageState.InPackageMenu = false
+	inputManager.ReadString()
+	SetPackageMenuActive(false) // Sai do sistema de pacotes
+
 }
 
-func TryOpenPackage(username string, client *model.Client) {
-	Menu.ClearScreen()
-	packageState.InPackageMenu = true
 
-	fmt.Println("📦 === SISTEMA DE PACOTES ===")
-	fmt.Println("Verificando status...")
 
-	// Verifica status do pacote
-	err := client.CheckPackStatus(username)
-	if err != nil {
-		fmt.Printf("Erro ao verificar status: %v\n", err)
-		packageState.InPackageMenu = false
-		time.Sleep(2 * time.Second)
-		return
-	}
+func PackageMenu(client *model.Client, totalCards string) {
 
-	// Aguarda resposta do status
-	fmt.Println("Aguardando resposta do servidor...")
+	for IsPackageMenuActive() {
+		// Se está aguardando resposta do servidor, mostra status e continua aguardando
+		if IsWaitingForPackage() {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
 
-	// Loop até sair do menu de pacotes
-	for packageState.InPackageMenu {
-		time.Sleep(100 * time.Millisecond)
-	}
-}
+		Menu.ClearScreen()
+		Menu.ShowPackageMenu(totalCards)
 
-func openPackage() {
-	Menu.ClearScreen()
-	fmt.Println("📦 Abrindo pacote...")
+		fmt.Print("\nEscolha: ")
+		opcao, err := inputManager.ReadInt()
+		if err != nil {
+			fmt.Println("⚠️ Entrada inválida!")
+			time.Sleep(1 * time.Second)
+			continue
+		}
 
-	
-	// client.OpenPack(username)
+		switch opcao {
+		case 1:
+			openPackage(client)
+			return
+		case 2:
+			fmt.Println("📋 Listando cartas... ")
+			time.Sleep(2 * time.Second)
+			SetPackageMenuActive(false)
 
-	// Simula abertura 
-	fmt.Println("✨ PACOTE ABERTO!")
-	fmt.Println("\nCartas obtidas:")
-	fmt.Println("1. Dragão de Fogo (Raro)")
-	fmt.Println("2. Mago Elemental (Comum)")
-	fmt.Println("3. Poção de Vida (Comum)")
-	fmt.Println("4. Escudo Mágico (Incomum)")
-	fmt.Println("5. Fênix Dourada (Épico)")
+		case 3:
+			fmt.Println("🔧 Gerenciando deck... ")
+			time.Sleep(2 * time.Second)
+			SetPackageMenuActive(false)
 
-	fmt.Println("\nPressione Enter para continuar...")
-	fmt.Scanln()
+		case 4:
+			SetPackageMenuActive(false)
 
-	// Volta ao menu principal após abrir
-	packageState.InPackageMenu = false
-}
-
-func showMyCards() {
-	Menu.ClearScreen()
-	fmt.Println("🃏 === MINHAS CARTAS ===")
-	fmt.Printf("Total: %d cartas\n\n", packageState.TotalCards)
-
-	
-	// mostra exemplo
-	fmt.Println("1. Dragão Normal (Poder: 50, Vida: 100)")
-	fmt.Println("2. Mago Iniciante (Poder: 30, Vida: 80)")
-	fmt.Println("3. Guerreiro (Poder: 40, Vida: 90)")
-
-	fmt.Println("\nPressione Enter para voltar...")
-	fmt.Scanln()
-
-	PackageMenu()
-}
-
-func PackageMenu() {
-	Menu.ClearScreen()
-	Menu.ShowPackageMenu(packageState.TotalCards)
-	var opcao int
-	fmt.Print("Escolha: ")
-	fmt.Scanln(&opcao)
-
-	switch opcao {
-	case 1:
-		openPackage()
-	case 2:
-		showMyCards()
-	case 3:
-		packageState.InPackageMenu = false
-	default:
-		fmt.Println("Opção inválida!")
-		time.Sleep(1 * time.Second)
-		PackageMenu()
+		default:
+			fmt.Println("⚠️ Opção inválida!")
+			time.Sleep(1 * time.Second)
+		}
 	}
 }
 
-func CooldownMenu() {
-	Menu.ClearScreen()
-	Menu.ShowCooldownMessage(packageState.TotalCards, packageState.Remaining)
+func CooldownMenu(client *model.Client, totalCards, remaining string) {
 
-	var opcao int
-	fmt.Print("Escolha: ")
-	fmt.Scanln(&opcao)
+	for IsPackageMenuActive() {
+		Menu.ClearScreen()
+		Menu.ShowCooldownMessage(totalCards, remaining)
 
-	switch opcao {
-	case 1:
-		showMyCards()
-	case 2:
-		packageState.InPackageMenu = false
-	default:
-		fmt.Println("Opção inválida!")
-		time.Sleep(1 * time.Second)
-		CooldownMenu()
+		fmt.Print("\nEscolha: ")
+		opcao, err := inputManager.ReadInt()
+		if err != nil {
+			fmt.Println("⚠️ Entrada inválida!")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		switch opcao {
+		case 1:
+			fmt.Println("📋 Listando cartas... ")
+			time.Sleep(2 * time.Second)
+			SetPackageMenuActive(false) 
+
+		case 2:
+			fmt.Println("🔧 Gerenciando deck... ")
+			time.Sleep(2 * time.Second)
+			SetPackageMenuActive(false) 
+
+		case 3:
+			SetPackageMenuActive(false) 
+
+		default:
+			fmt.Println("⚠️ Opção inválida!")
+			time.Sleep(1 * time.Second)
+		}
 	}
-}
-
-// Função auxiliar para converter string para int
-func parseInt(s string) int {
-	var result int
-	fmt.Sscanf(s, "%d", &result)
-	return result
 }
