@@ -57,28 +57,57 @@ func (c *Client) FoundMatch(player *models.Player) error {
 	return c.SendRequest(req)
 }
 
+
+// --------------------- Requisições para os pacotes
+
 // requisições para verificar status do pacote
 func (c *Client) CheckPackStatus(username string) error {
 	req := request.Request{
 		User:   username,
-		Method: "packStatus",
+		Method: "PackStatus",
 		Params: map[string]string{},
 	}
 	return c.SendRequest(req)
 
 }
 
-// --------------------- Requisições para os pacotes
 
 // requisições de abrir pacote
 func (c *Client) OpenPack(username string) error {
 	req := request.Request{
 		User:   username,
-		Method: "openPack",
+		Method: "OpenPack",
 		Params: map[string]string{},
 	}
 	return c.SendRequest(req)
 }
+
+// requisição para listar as cartas 
+func (c *Client) ListCards(player *models.Player) error{
+	req := request.Request{
+		User:   player.Nome,
+		Method: "ListCards",
+		Params: map[string]string{
+			"ID": player.ID,
+		},
+	}
+	return c.SendRequest(req)
+}
+
+// requisição para selecionar cartas do deck de batalha
+func (c *Client) SelectDeck(username string, oldCard string, newCard string) error{
+	req := request.Request{
+		User:   username,
+		Method: "SelectMatchDeck",
+		Params: map[string]string{
+			
+			"oldCard": oldCard,
+			"newCard": newCard,
+		},
+	}
+	return c.SendRequest(req)
+}
+
 
 //----------------- Requisições de um match
 

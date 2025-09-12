@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	response "jogodecartasonline/api/Response"
-	"jogodecartasonline/client/model"
+	"jogodecartasonline/client/routes"
 	"jogodecartasonline/server/game/models"
 	"time"
 	
