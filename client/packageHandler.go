@@ -6,7 +6,7 @@ import (
 	response "jogodecartasonline/api/Response"
 	model "jogodecartasonline/client/routes"
 	"jogodecartasonline/server/game/models"
-
+	"strings"
 	"time"
 )
 
@@ -61,6 +61,22 @@ func ListCards(client *model.Client, player *models.Player) {
 
 }
 
+
+// Envia requisição para trocar carta do deck
+func ChangeDeckCard(client *model.Client, oldCardIndex, newCardIndex int) {
+	SetWaitingForDeck(true)
+
+	err := client.ChangeDeckCard(oldCardIndex, newCardIndex)
+	if err != nil {
+		fmt.Printf("❌ Erro ao trocar carta: %v\n", err)
+		SetWaitingForDeck(false)
+		return
+	}
+
+	fmt.Println("⏳ Processando troca...")
+}
+
+
 // Processa a requisição para status do pacote
 func ProcessPackageStatus(resp response.Response, client *model.Client) {
 	canOpen := resp.Data["canOpen"] == "true"
@@ -110,20 +126,65 @@ func ProcessPackageOpened(resp response.Response, client *model.Client) {
 
 // Processa a requisição de listagem das cartas de um jogador
 func ProcessListCards(resp response.Response, client *model.Client) {
-	DeckCards, err1 := models.DecodeCards(resp.Data["deckCards"])
-	OtherCards, err2 := models.DecodeCards(resp.Data["otherCards"])
+	deckCards, err1 := models.DecodeCards(resp.Data["deckCards"])
+	otherCards, err2 := models.DecodeCards(resp.Data["otherCards"])
 
 	if err1 != nil || err2 != nil {
 		fmt.Printf("❌ Erro ao decodificar cartas: deck=%v, other=%v\n", err1, err2)
 		return
 	}
 
-	Menu.ShowListCards(DeckCards, OtherCards)
+	// Verifica se está no contexto de gerenciamento de deck
+	if IsDeckMenuActive() {
+		ProcessListCardsForDeck(resp, client)
+		return
+	}
 
+	// Contexto normal de visualização
+	Menu.ShowListCards(deckCards, otherCards)
 	fmt.Println("\nPressione ENTER para voltar...")
 	inputManager.ReadString()
 	SetPackageMenuActive(false)
 }
+
+
+// Processa a requisição de troca de carta do deck
+func ProcessNewDeck(resp response.Response, client *model.Client) {
+	SetWaitingForDeck(false)
+
+	Menu.ClearScreen()
+	Menu.ShowNewCard(resp.Data)
+
+	fmt.Println("\nPressione ENTER para continuar...")
+	inputManager.ReadString()
+	
+	SetDeckMenuActive(false)
+	SetPackageMenuActive(false)
+}
+
+// Processa a  requisição de listagem de cartas para gerenciamento de deck
+func ProcessListCardsForDeck(resp response.Response, client *model.Client) {
+	deckCards, err1 := models.DecodeCards(resp.Data["deckCards"])
+	otherCards, err2 := models.DecodeCards(resp.Data["otherCards"])
+
+	if err1 != nil || err2 != nil {
+		fmt.Printf("❌ Erro ao decodificar cartas: deck=%v, other=%v\n", err1, err2)
+		SetDeckMenuActive(false)
+		return
+	}
+
+	ShowDeckManagement(client, deckCards, otherCards)
+}
+
+
+
+
+
+
+
+
+
+
 
 // --------------------- Auxliliares
 
@@ -143,6 +204,83 @@ func showOpenedPackage(newCards []models.Card, totalCards string) {
 	SetPackageMenuActive(false) // Sai do sistema de pacotes
 
 }
+
+
+func ManageDeck(client *model.Client, player *models.Player) {
+	fmt.Println("🔧 Carregando gerenciamento de deck...")
+	SetDeckMenuActive(true)
+
+	err := client.ListCards(player)
+	if err != nil {
+		fmt.Printf("❌ Erro ao carregar cartas: %v\n", err)
+		time.Sleep(2 * time.Second)
+		SetDeckMenuActive(false)
+		return
+	}
+}
+
+
+// Seleciona carta para remover e adiconar no deck 
+func HandleCardSwapWithDebug(client *model.Client, deckCards, otherCards []*models.Card) bool {
+
+	fmt.Println("\n🔄 ===== TROCAR CARTA =====")
+	fmt.Println("Qual carta deseja REMOVER do deck?")
+	Menu.ShowListCard(deckCards)
+	
+
+	fmt.Printf("\nEscolha (1-%d) ou 0 para cancelar: ", len(deckCards))
+	oldChoice, err := inputManager.ReadInt()
+	if err != nil || oldChoice < 0 || oldChoice > len(deckCards) {
+		fmt.Println("⚠️ Entrada inválida!")
+		time.Sleep(1 * time.Second)
+		return false
+	}
+
+	if oldChoice == 0 {
+		return false // Cancelar
+	}
+
+	oldCardIndex := oldChoice - 1
+	selectedOldCard := deckCards[oldCardIndex]
+	
+	
+	// Seleciona carta para adicionar ao deck
+	fmt.Println("\nQual carta deseja ADICIONAR ao deck?")
+	Menu.ShowListCard(otherCards)
+	
+	fmt.Printf("\nEscolha (1-%d) ou 0 para cancelar: ", len(otherCards))
+	newChoice, err := inputManager.ReadInt()
+	if err != nil || newChoice < 0 || newChoice > len(otherCards) {
+		fmt.Println("⚠️ Entrada inválida!")
+		time.Sleep(1 * time.Second)
+		return false
+	}
+
+	if newChoice == 0 {
+		return false // Cancelar
+	}
+
+	newCardIndex := newChoice - 1
+	selectedNewCard := otherCards[newCardIndex]
+	
+	Menu.ShowConfirmChange(*selectedNewCard,*selectedOldCard,oldCardIndex, newCardIndex)
+	
+	confirm := inputManager.ReadString()
+	if strings.ToLower(strings.TrimSpace(confirm)) != "s" {
+		fmt.Println("❌ Troca cancelada!")
+		time.Sleep(1 * time.Second)
+		return false
+	}
+
+	// Executa a troca
+	ChangeDeckCard(client, oldCardIndex, newCardIndex)
+	return true
+}
+
+
+
+
+// --------------------- Menus
 
 func PackageMenu(client *model.Client, totalCards string, player *models.Player) {
 
@@ -175,8 +313,8 @@ func PackageMenu(client *model.Client, totalCards string, player *models.Player)
 
 		case 3:
 			fmt.Println("🔧 Gerenciando deck... ")
-			time.Sleep(2 * time.Second)
-			SetPackageMenuActive(false)
+			ManageDeck(client,player)
+			return
 
 		case 4:
 			SetPackageMenuActive(false)
@@ -210,8 +348,8 @@ func CooldownMenu(client *model.Client, totalCards, remaining string, player *mo
 
 		case 2:
 			fmt.Println("🔧 Gerenciando deck... ")
-			time.Sleep(2 * time.Second)
-			SetPackageMenuActive(false)
+			ManageDeck(client,player)
+			return
 
 		case 3:
 			SetPackageMenuActive(false)
@@ -222,3 +360,57 @@ func CooldownMenu(client *model.Client, totalCards, remaining string, player *mo
 		}
 	}
 }
+
+// Interface de gerenciamento de deck
+func ShowDeckManagement(client *model.Client, deckCards, otherCards []*models.Card) {
+	for IsDeckMenuActive() {
+		if IsWaitingForDeck() {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		Menu.ClearScreen()
+		
+		fmt.Println("\n════════════════════════════════════════════════")
+		fmt.Println("⚔️ GERENCIAR DECK")
+		fmt.Println("════════════════════════════════════════════════")
+
+		Menu.ShowListCards(deckCards, otherCards)
+	
+		Menu.ShowDeckManagementMenu()
+		opcao, err := inputManager.ReadInt()
+		if err != nil {
+			fmt.Println("⚠️ Entrada inválida!")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		switch opcao {
+		case 1:
+			if len(deckCards) == 0 {
+				fmt.Println("❌ Não há cartas no deck para trocar!")
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			if len(otherCards) == 0 {
+				fmt.Println("❌ Não há cartas disponíveis para adicionar!")
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			if HandleCardSwapWithDebug(client, deckCards, otherCards) {
+				return 
+			}
+
+		case 2:
+			SetDeckMenuActive(false)
+			SetPackageMenuActive(false)
+			return
+
+		default:
+			fmt.Println("⚠️ Opção inválida!")
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+

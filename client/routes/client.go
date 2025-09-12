@@ -6,7 +6,7 @@ import (
 	request "jogodecartasonline/api/Request"
 	response "jogodecartasonline/api/Response"
 	"jogodecartasonline/server/game/models"
-
+	"strconv"
 	"fmt"
 	"net"
 )
@@ -58,6 +58,7 @@ func (c *Client) FoundMatch(player *models.Player) error {
 }
 
 
+
 // --------------------- Requisições para os pacotes
 
 // requisições para verificar status do pacote
@@ -95,19 +96,18 @@ func (c *Client) ListCards(player *models.Player) error{
 }
 
 // requisição para selecionar cartas do deck de batalha
-func (c *Client) SelectDeck(username string, oldCard string, newCard string) error{
+func (c *Client) ChangeDeckCard(oldCardIndex, newCardIndex int) error {
 	req := request.Request{
-		User:   username,
 		Method: "SelectMatchDeck",
+		User:   c.Nome,
 		Params: map[string]string{
-			
-			"oldCard": oldCard,
-			"newCard": newCard,
+			"oldCardIndex": strconv.Itoa(oldCardIndex),
+			"newCardIndex": strconv.Itoa(newCardIndex),
 		},
 	}
 	return c.SendRequest(req)
+	
 }
-
 
 //----------------- Requisições de um match
 

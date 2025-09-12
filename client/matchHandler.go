@@ -48,6 +48,7 @@ func ProcessPlayerActionResponse(resp response.Response) {
 	case "attack":
 		if playerResult := gameAction.PlayerResult; playerResult != nil {
 			Menu.ShowPlayerResultAtack(playerResult)
+			time.Sleep(3 * time.Second)
 			if result, ok := playerResult["result"].(string); ok {
 				if result == "WIN" {
 					fmt.Println("\n🏆 VOCÊ VENCEU! Parabéns!")

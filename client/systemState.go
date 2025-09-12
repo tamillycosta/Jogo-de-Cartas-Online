@@ -7,7 +7,35 @@ var (
 	PackageMenuActive bool
 	WaitingForPackage bool 
 	packageMutex      sync.RWMutex
+	deckMenuActive  = false
+	waitingForDeck  = false
+	deckMutex       sync.RWMutex
 )
+
+func SetDeckMenuActive(active bool) {
+	deckMutex.Lock()
+	defer deckMutex.Unlock()
+	deckMenuActive = active
+}
+
+func IsDeckMenuActive() bool {
+	deckMutex.RLock()
+	defer deckMutex.RUnlock()
+	return deckMenuActive
+}
+
+func SetWaitingForDeck(waiting bool) {
+	deckMutex.Lock()
+	defer deckMutex.Unlock()
+	waitingForDeck = waiting
+}
+
+func IsWaitingForDeck() bool {
+	deckMutex.RLock()
+	defer deckMutex.RUnlock()
+	return waitingForDeck
+}
+
 
 func SetPackageMenuActive(active bool) {
 	packageMutex.Lock()

@@ -130,6 +130,9 @@ func handleServerMessages(client *model.Client) {
 			fmt.Println("🎁 Suas Cartas")
 			ProcessListCards(resp, client)
 
+		case "CHANGE_DECK_CARD":
+			ProcessNewDeck(resp,client)
+
 		default:
 			if resp.Message == "Procurando partida..." {
 				fmt.Printf("⏳ Procurando oponente... (Posição: %s)\n", resp.Data["posicao"])
