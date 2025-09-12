@@ -5,7 +5,7 @@ import(	"sync")
 // Status do sistema de pacotes 
 var (
 	PackageMenuActive bool
-	WaitingForPackage bool // NOVO: Indica se está aguardando resposta do servidor
+	WaitingForPackage bool 
 	packageMutex      sync.RWMutex
 )
 

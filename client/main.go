@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	response "jogodecartasonline/api/Response"
-	"jogodecartasonline/client/model"
+	"jogodecartasonline/client/routes"
 	"jogodecartasonline/client/screm"
 	"jogodecartasonline/server/game/models"
 	"jogodecartasonline/utils"
@@ -125,6 +125,10 @@ func handleServerMessages(client *model.Client) {
 		case "PACKAGE_OPENED":
 			fmt.Println("🎁 Pacote aberto recebido")
 			ProcessPackageOpened(resp, client)
+
+		case "LIST_CARDS":
+			fmt.Println("🎁 Suas Cartas")
+			ProcessListCards(resp, client)
 
 		default:
 			if resp.Message == "Procurando partida..." {
@@ -251,7 +255,7 @@ func main() {
 
 			case 2:
 				fmt.Println("🎁 Entrando no sistema de pacotes...")
-				EnterPackageSystem(&client, player.Nome)
+				EnterPackageSystem(&client, player)
 
 			case 3:
 				Menu.ClearScreen()
