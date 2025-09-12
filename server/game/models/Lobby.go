@@ -45,22 +45,25 @@ func (lobby *Lobby) AddPlayer(req request.Request, conn net.Conn) response.Respo
     var player Player
     result := lobby.DB.Preload("Cards").Where("nome = ?", username).First(&player) 
 
+
     if result.Error == nil {
         // existe no banco
         if lobby.isLog(username) {
             return resp.MakeErrorResponse(403, "Ação proibida - User já está logado", "403 Forbidden")
         }
-        fmt.Print("entrou aqui")
+        player.LoadBattleDeck(lobby.DB)
         player.Conn = conn
         lobby.Players[player.Nome] = &player
 
     } else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+        // Player novo
         newPlayer := CreateAccount(req, conn)
         lobby.DB.Create(&newPlayer)
         lobby.AddCard(&newPlayer)
         
         // Carrega as cartas recém-criadas
-        lobby.DB.Preload("Cards").Where("id = ?", newPlayer.ID).First(&newPlayer) // MUDANÇA AQUI
+        
+        lobby.DB.Preload("Cards").Where("id = ?", newPlayer.ID).First(&newPlayer) 
         
         lobby.Players[newPlayer.Nome] = &newPlayer
         player = newPlayer
@@ -183,12 +186,13 @@ func (lobby *Lobby) CheckPackStatus(req request.Request, conn net.Conn) response
     
     canOpen, remaining := GlobalPackSystem.CanOpenPack(player.ID)
     
-   
+   fmt.Printf("requisição recebida")
     return resp.MakeSuccessResponse("Status verificado", map[string]string{
-        "type":       "CHECKPACKAGE", 
+        "type":       "PACKAGE_STATUS", 
         "canOpen":    fmt.Sprintf("%t", canOpen),
         "remaining":  remaining.String(),
         "totalCards": fmt.Sprintf("%d", len(player.Cards)),
+        "player": utils.Encode(player),
     })
 }
 
@@ -220,7 +224,7 @@ func (lobby *Lobby) OpenCardPack(req request.Request, conn net.Conn) response.Re
         player.Cards = append(player.Cards, card)
     }
     lobby.DB.Save(player)
-    
+    fmt.Printf("jogador %s abriu um pacote!!", player.Nome)
     return resp.MakeSuccessResponse("Pacote aberto!", map[string]string{
         "type":       "PACKAGE_OPENED",
         "cards":      utils.Encode(newCards),
@@ -228,13 +232,117 @@ func (lobby *Lobby) OpenCardPack(req request.Request, conn net.Conn) response.Re
     })
 }
 
+// Metodo Responssavel por apresentar os status das conexões atuais no servidor
+func (lobby *Lobby) GetConnectionStats(req request.Request, conn net.Conn) response.Response {
+    resp := response.Response{}
+    
+    if lobby.ConnectionMonitor == nil {
+        return resp.MakeErrorResponse(500, "Monitor não inicializado", "")
+    }
+    
+    stats := lobby.ConnectionMonitor.GetStats()
+    
+    // Adiciona estatísticas do lobby
+    lobby.Mu.RLock()
+    stats["totalPlayers"] = len(lobby.Players)
+    stats["waitingPlayers"] = len(lobby.WaitQueue)
+    stats["activeMatches"] = len(lobby.Matchs)
+    lobby.Mu.RUnlock()
+    
+    return resp.MakeSuccessResponse("Estatísticas de conexão", map[string]string{
+        "stats": utils.Encode(stats),
+    })
+}
 
 
 
+func (lobby *Lobby) SelectMatchDeck(req request.Request, conn net.Conn) response.Response {
+    resp := response.Response{}
+    
+    username := req.User
+    oldCardName := req.Params["oldCardName"] // Carta a remover do deck
+    newCardName := req.Params["newCardName"] // Carta a adicionar ao deck
+    
+   
+    var player Player
+    if err := lobby.DB.Preload("Cards").Where("nome = ?", username).First(&player).Error; err != nil {
+        return resp.MakeErrorResponse(404, "Player não encontrado no banco", "")
+    }
+    
+    // Encontra as cartas
+    var oldCard *Card = nil
+    var newCard *Card = nil
+    
+    for _, card := range player.Cards {
+        if card.Nome == oldCardName && card.InDeck {
+            oldCard = card
+        }
+        if card.Nome == newCardName && !card.InDeck {
+            newCard = card
+        }
+    }
+    
+    if oldCard == nil {
+        return resp.MakeErrorResponse(400, "Carta antiga não encontrada no deck", "")
+    }
+    
+    if newCard == nil {
+        return resp.MakeErrorResponse(400, "Carta nova não encontrada ou já está no deck", "")
+    }
+    
+    // Atualiza status no banco
+    oldCard.InDeck = false
+    newCard.InDeck = true
+    
+    lobby.DB.Save(oldCard)
+    lobby.DB.Save(newCard)
+    
+    // Atualiza player logado se existir
+    if loggedPlayer := lobby.Players[username]; loggedPlayer != nil {
+        loggedPlayer.LoadBattleDeck(lobby.DB)
+    }
+    
+    return resp.MakeSuccessResponse("Deck atualizado com sucesso!", map[string]string{
+        "removed": oldCardName,
+        "added":   newCardName,
+    })
+}
 
 
 
-// Auxliares
+func (lobby *Lobby) ListCards(req request.Request, conn net.Conn) response.Response {
+    resp := response.Response{}
+    playerID := req.Params["ID"]
+    
+    var player Player
+    if err := lobby.DB.Preload("Cards").Where("id = ?", playerID).First(&player).Error; err != nil {
+        return resp.MakeErrorResponse(404, "Player não encontrado", "")
+    }
+    
+    // Separa cartas do deck das outras
+    var deckCards []*Card
+    var otherCards []*Card
+    
+    for _, card := range player.Cards {
+        if card.InDeck {
+            deckCards = append(deckCards, card)
+        } else {
+            otherCards = append(otherCards, card)
+        }
+    }
+    
+    fmt.Printf("jogador %s listou suas cartas", playerID)
+    return resp.MakeSuccessResponse("Cartas listadas com sucesso!", map[string]string{
+        "type": "LIST_CARDS",
+        "deckCards":  utils.Encode(deckCards),
+        "otherCards": utils.Encode(otherCards),
+        "deckCount":  fmt.Sprintf("%d", len(deckCards)),
+        "totalCards": fmt.Sprintf("%d", len(player.Cards)),
+    })
+}
+
+
+//--------------------------------- Auxliares
 
 // Metodo Responssavel por adicionar jogador a lista de espera para encontrar uma partida
 func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingPlayer {
@@ -258,7 +366,9 @@ func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingP
     return waitingPlayer
 }
 
-// status do siistema
+
+
+// status do sistema
 func (l *Lobby) PrintStats() {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
@@ -284,28 +394,6 @@ func (l *Lobby) PrintStats() {
 }
 
 
-// Pega status das conexões atuais no servidor
-func (lobby *Lobby) GetConnectionStats(req request.Request, conn net.Conn) response.Response {
-    resp := response.Response{}
-    
-    if lobby.ConnectionMonitor == nil {
-        return resp.MakeErrorResponse(500, "Monitor não inicializado", "")
-    }
-    
-    stats := lobby.ConnectionMonitor.GetStats()
-    
-    // Adiciona estatísticas do lobby
-    lobby.Mu.RLock()
-    stats["totalPlayers"] = len(lobby.Players)
-    stats["waitingPlayers"] = len(lobby.WaitQueue)
-    stats["activeMatches"] = len(lobby.Matchs)
-    lobby.Mu.RUnlock()
-    
-    return resp.MakeSuccessResponse("Estatísticas de conexão", map[string]string{
-        "stats": utils.Encode(stats),
-    })
-}
-
 
 // Remove player da fila (em caso de timeout ou desconexão)
 func (lobby *Lobby) RemoveFromQueue(targetPlayer *WaitingPlayer) {
@@ -319,7 +407,6 @@ func (lobby *Lobby) RemoveFromQueue(targetPlayer *WaitingPlayer) {
 		}
 	}
 }
-
 
 
 

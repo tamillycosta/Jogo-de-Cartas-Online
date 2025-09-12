@@ -347,6 +347,24 @@ func (lobby *Lobby) ProcessLeaveMatch(match *Match, leavingPlayer *Player) GameA
 
 // -------------------- Funções auxiliares -----------------------------------
 
+
+func (match *Match) RestoreCardsHp(){
+
+	for i := 0; i < 2; i++ {
+		card := match.Player1.Cards[i]
+		templateCard := BaseCards[card.TemplateID]
+		match.Player1.Cards[i].Health = templateCard.Health
+	}
+
+	for i := 0; i < 2; i++ {
+		card := match.Player2.Cards[i]
+		templateCard := BaseCards[card.TemplateID]
+		match.Player2.Cards[i].Health = templateCard.Health
+	}
+	
+}
+
+
 func (lobby *Lobby) GetOpponent(match *Match, currentPlayer *Player) *Player {
 	if match == nil || currentPlayer == nil {
 		return nil
@@ -418,18 +436,3 @@ func (match *Match) ChoseStartPlayer(player1 Player, player2 Player) {
 	}
 }
 
-func (match *Match) RestoreCardsHp(){
-
-	for i := 0; i < 2; i++ {
-		card := match.Player1.Cards[i]
-		templateCard := BaseCards[card.TemplateID]
-		match.Player1.Cards[i].Health = templateCard.Health
-	}
-
-	for i := 0; i < 2; i++ {
-		card := match.Player2.Cards[i]
-		templateCard := BaseCards[card.TemplateID]
-		match.Player2.Cards[i].Health = templateCard.Health
-	}
-	
-}

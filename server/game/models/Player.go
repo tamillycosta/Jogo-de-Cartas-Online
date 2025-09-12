@@ -16,7 +16,9 @@ type Player struct {
 	MatchID     *string  `gorm:"-"`
 	Match       *Match   `gorm:"-"`
 	Conn        net.Conn `gorm:"-" json:"-"`
+    BattleDeck  []*Card `gorm:"-" json:"battleDeck"`
 	CurrentCard *Card    `gorm:"-"`
+
 }
 
 func CreateAccount(req request.Request, conn net.Conn) Player {
@@ -37,9 +39,43 @@ func (lobby *Lobby) AddCard(player *Player) {
     }
 }
 
+// carrega todas as cartas do banco
 func (p *Player) LoadCards(db *gorm.DB) error {
     return db.Where("player_id = ?", p.ID).Find(&p.Cards).Error
 }
+
+// Carrega apenas cartas marcadas como InDeck
+func (p *Player) LoadBattleDeck(db *gorm.DB) error {
+    return db.Where("player_id = ? AND in_deck = true", p.ID).Find(&p.BattleDeck).Error
+}
+
+
+func (p *Player) GetDeckCount(db *gorm.DB) int {
+    var count int64
+    db.Model(&Card{}).Where("player_id = ? AND in_deck = true", p.ID).Count(&count)
+    return int(count)
+}
+
+func (p *Player) GetCardByName(cardName string) *Card {
+    for _, card := range p.Cards {
+        if card.Nome == cardName {
+            return card
+        }
+    }
+    return nil
+}
+
+func (p *Player) GetDeckCard(cardName string) *Card {
+    for _, card := range p.BattleDeck {
+        if card.Nome == cardName {
+            return card
+        }
+    }
+    return nil
+}
+
+// lista as cartas de batalha 
+
 
 // Escolhe uma carta baseada no índice
 func (p *Player) ChooseCardByIndex(index int) *Card {
@@ -51,6 +87,7 @@ func (p *Player) ChooseCardByIndex(index int) *Card {
 }
 
 
+
 func (lobby *Lobby) ChooseCard(player Player, cardIndex int) *Card {
     // Busca o player atual no mapa
     currentPlayer := lobby.Players[player.Nome]
@@ -60,7 +97,7 @@ func (lobby *Lobby) ChooseCard(player Player, cardIndex int) *Card {
     
     // Carrega as cartas do banco se não estiverem carregadas
     if len(currentPlayer.Cards) == 0 {
-        err := currentPlayer.LoadCards(lobby.DB)
+        err := currentPlayer.LoadBattleDeck(lobby.DB)
         if err != nil {
             fmt.Printf("❌ Erro ao carregar cartas: %v\n", err)
             return nil

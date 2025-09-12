@@ -3,12 +3,13 @@ package models
 import (
 	"sync"
     "math/rand"
-    
+    "fmt"
 	"github.com/google/uuid"
 )
 
 
-
+var SpecialCardCount = make(map[string]int)
+var CardVersions = make(map[string]int) 
 type CardRarity string
 
 const (
@@ -97,7 +98,7 @@ var BaseCards = map[string]Card {
     },
     "starter_dragon": {
         TemplateID:  "starter_dragon",
-        Nome:        "Poção de Cura",
+        Nome:        "Dragão Comum",
         Power:       50,
         Health:      100,
         Rarity:      string(COMMON),
@@ -112,7 +113,7 @@ var BaseCards = map[string]Card {
         Health:      300,
         Rarity: string(LEGENDARY),
         IsSpecial:   true,
-        MaxCopies:   10,
+        MaxCopies:   200,
     },
     "legend_archmage": {
         TemplateID:  "legend_archmage",
@@ -121,7 +122,7 @@ var BaseCards = map[string]Card {
         Health:      280,
         Rarity: string(LEGENDARY),
         IsSpecial:   true,
-        MaxCopies:   15,
+        MaxCopies:   200,
     },
     "epic_shadow_witch": {
         TemplateID:  "epic_shadow_witch",
@@ -131,7 +132,7 @@ var BaseCards = map[string]Card {
         Rarity:      string(EPIC),
       
         IsSpecial:   true,
-        MaxCopies:   50,
+        MaxCopies:   200,
     },
 
     "epic_phoenix": {
@@ -141,27 +142,27 @@ var BaseCards = map[string]Card {
         Health:      200,
         Rarity:      string(EPIC),
         IsSpecial:   true,
-        MaxCopies:   30,
+        MaxCopies:   200,
     },
 
     "rare_best": {
-        TemplateID:  "epic_phoenix",
+        TemplateID:  "rare_best",
         Nome:        "Besta Sombria",
         Power:       180,
         Health:      170,
         Rarity:      string(RARE),
         IsSpecial:   true,
-        MaxCopies:   50,
+        MaxCopies:   200,
     },
 
     "uncumon_bow": {
-        TemplateID:  "epic_phoenix",
+        TemplateID:  "uncumon_bow",
         Nome:        "Arqueiro Fantasma",
         Power:       150,
         Health:      170,
         Rarity:      string(UNCOMMON),
         IsSpecial:   true,
-        MaxCopies:   100,
+        MaxCopies:   200,
     },
 
 
@@ -171,9 +172,6 @@ var StarterCardIDs = []string{
     "starter_fire", "starter_knight", "starter_raven", "starter_devil", 
     "starter_elf", "starter_dragon",
 }
-
-var SpecialCardCount = make(map[string]int)
-
 
 
 type CardParck struct{
@@ -216,6 +214,7 @@ func GenerateInicialCards(playerId string)([]*Card){
           if(card == nil){
               return nil
           }
+          card.InDeck = true
           cards[i] = card
       }
       return cards
@@ -223,9 +222,11 @@ func GenerateInicialCards(playerId string)([]*Card){
 
 
 func IsSpecialCardAvailable(templateID string) bool {
-    baseCard, exists := BaseCards[templateID]
-    if !exists || !baseCard.IsSpecial {
-        return true // Cartas normais sempre disponíveis
+    baseCard := BaseCards[templateID]
+    
+    
+    if baseCard.Rarity == string(COMMON) {
+        return true
     }
     
     distributed := SpecialCardCount[templateID]
@@ -246,12 +247,21 @@ func GeneratePackCard(playerID string) *Card {
     }
     
     templateID := availableCards[rand.Intn(len(availableCards))]
+    baseCard := BaseCards[templateID]
     
-    // Marca como usada se especial
-    if BaseCards[templateID].IsSpecial {
-        MarkSpecialCardUsed(templateID)
+    // Se é carta COMMON, cria normalmente 
+    if baseCard.Rarity == string(COMMON) {
+        return CreatePlayerCard(templateID, playerID)
     }
     
+    // Se é carta especial, verifica limite
+    if !IsSpecialCardAvailable(templateID) {
+        // Acabou o limite, cria versão nova
+        return CreateNextVersion(templateID, playerID)
+    }
+    
+    // Ainda tem da versão original
+    MarkSpecialCardUsed(templateID)
     return CreatePlayerCard(templateID, playerID)
 }
 
@@ -287,3 +297,65 @@ func getCardsByRarity(rarity CardRarity) []string {
 
 
 
+func generateRandomStats(rarity string) (int, int) {
+    var minPower, maxPower, minHealth, maxHealth int
+    
+    switch rarity {
+    case string(UNCOMMON):
+        minPower, maxPower = 120, 180
+        minHealth, maxHealth = 120, 180
+    case string(RARE):
+        minPower, maxPower = 160, 220
+        minHealth, maxHealth = 160, 220
+    case string(EPIC):
+        minPower, maxPower = 200, 280
+        minHealth, maxHealth = 200, 280
+    case string(LEGENDARY):
+        minPower, maxPower = 280, 350
+        minHealth, maxHealth = 280, 350
+    default: // COMMON
+        minPower, maxPower = 80, 120
+        minHealth, maxHealth = 80, 120
+    }
+    
+    power := rand.Intn(maxPower-minPower+1) + minPower
+    health := rand.Intn(maxHealth-minHealth+1) + minHealth
+    
+    return power, health
+}
+
+func CreateNextVersion(originalTemplateID string, playerID string) *Card {
+    baseCard := BaseCards[originalTemplateID]
+    
+    // Incrementa versão
+    CardVersions[originalTemplateID]++
+    version := CardVersions[originalTemplateID] + 1 // +1 porque começou da versão 1
+    
+    // Gera stats aleatórios baseados na raridade
+    newPower, newHealth := generateRandomStats(baseCard.Rarity)
+    
+    // Cria nova carta
+    newCard := Card{
+        ID:         uuid.NewString(),
+        TemplateID: fmt.Sprintf("%s_v%d", originalTemplateID, version),
+        Nome:       fmt.Sprintf("%s V%d", baseCard.Nome, version),
+        Power:      newPower,
+        Health:     newHealth,
+        Rarity:     baseCard.Rarity,
+        PlayerId:   playerID,
+        IsSpecial:  true,
+        MaxCopies:  baseCard.MaxCopies, // Mesmo limite da original
+        InDeck:     false,
+    }
+    
+    // Adiciona nova versão ao mapa de cartas base para futuras criações
+    BaseCards[newCard.TemplateID] = newCard
+    
+    // Reset contador para nova versão
+    SpecialCardCount[newCard.TemplateID] = 1
+    
+    fmt.Printf("Nova versão criada: %s (Power: %d, Health: %d)\n", 
+        newCard.Nome, newCard.Power, newCard.Health)
+    
+    return &newCard
+}

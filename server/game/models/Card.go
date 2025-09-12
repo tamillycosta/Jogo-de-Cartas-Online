@@ -1,6 +1,13 @@
 package models
 
-import "github.com/google/uuid"
+
+import(
+"github.com/google/uuid"
+ "fmt"
+ "encoding/json"
+)
+
+
 
 type Package struct {
 	Cards []*Card
@@ -17,6 +24,7 @@ type Card struct {
 	CurrentCopies int 
 	MaxCopies int 
 	IsSpecial bool
+	InDeck   bool   `gorm:"default:false" json:"inDeck"` 
 }
 
 
@@ -30,4 +38,22 @@ func NewCard(player *Player) Card {
 	Health := 100
 	card := &Card{ID: id, Nome: Nome, Power: Power, Rarity: Rarity, PlayerId: player.ID, Health: Health, CurrentCopies: 0, MaxCopies: 0}
 	return *card
+}
+
+
+func DecodeCards(data interface{}) ([]*Card, error) {
+	cards, ok := data.(string)
+
+	if !ok {
+		return nil, fmt.Errorf("dados do player não são uma string válida")
+	}
+
+	var newCards []*Card
+	err := json.Unmarshal([]byte(cards), &newCards);
+
+	if err != nil {	
+		return nil, fmt.Errorf("não foi possivel decodificar as cartas")
+	}
+
+	return newCards,nil
 }
