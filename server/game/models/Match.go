@@ -3,8 +3,6 @@ package models
 import (
 	"fmt"
 	request "jogodecartasonline/api/Request"
-	response "jogodecartasonline/api/Response"
-	"jogodecartasonline/utils"
 	"math/rand"
 	"net"
 	"sync"
@@ -22,7 +20,7 @@ const (
 	GAME_STATUS_ENDED  = "ENDED"
 
 	// Configurações do jogo
-	INITIAL_PLAYER_LIFE = 1
+	INITIAL_PLAYER_LIFE = 3
 )
 
 // Estrutura para representar um jogador na lista de espera
@@ -83,70 +81,7 @@ func NewMatch(player1 *Player, player2 *Player) *Match {
 	return match
 }
 
-// Processa as jogadas de um player na partida
-func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) response.Response {
-	resp := response.Response{}
 
-	lobby.Mu.RLock()
-	player := lobby.Players[req.User]
-	lobby.Mu.RUnlock()
-
-	if player == nil {
-		return resp.MakeErrorResponse(404, "Player não encontrado", "")
-	}
-
-	if player.Match == nil {
-		return resp.MakeErrorResponse(400, "Player não está em uma partida", "")
-	}
-
-	match := player.Match
-
-	if match.Status != GAME_STATUS_ACTIVE {
-		return resp.MakeErrorResponse(400, "Partida já finalizada", "")
-	}
-
-	// Possiveis ações de jogador
-	var actionResult GameActionResult
-	switch req.Params["action"] {
-	case ACTION_CHOOSE_CARD:
-		actionResult = lobby.ProcessChoseCard(match, player, req)
-	case ACTION_ATTACK:
-		actionResult = lobby.ProcessAttack(match, player, req)
-	case ACTION_LEAVE_MATCH:
-		actionResult = lobby.ProcessLeaveMatch(match, player)
-	default:
-		return resp.MakeErrorResponse(400, "Ação não reconhecida", "")
-	}
-
-	if actionResult.Success {
-		opponent := lobby.GetOpponent(match, player)
-
-		if actionResult.GameEnded {
-			//  Notifica ambos os players com GAME_ENDED
-			if opponent != nil {
-				// Notifica oponente (perdedor ou vencedor dependendo da situação)
-				isOpponentWinner := (actionResult.Winner != nil && actionResult.Winner.Nome == opponent.Nome)
-				NotifyGameEnd(opponent, actionResult, isOpponentWinner)
-			}
-
-			lobby.CleanupFinishedMatch(match, actionResult.Winner)
-
-		} else {
-			// Jogo continua - notifica oponente normalmente
-
-			if err := NotifyOpponentAction(opponent, actionResult); err != nil {
-				fmt.Printf("⚠️ Erro ao notificar oponente: %v\n", err)
-			}
-
-			// Troca turno
-			lobby.SwitchTurn(match)
-		}
-	}
-
-	return resp.MakeSuccessResponse("Ação processada", map[string]string{
-		"result": utils.Encode(actionResult),
-	})
-}
 
 // Processa a escolha de carta de um jogador
 func (lobby *Lobby) ProcessChoseCard(match *Match, currentPlayer *Player, req request.Request) GameActionResult {
@@ -344,6 +279,9 @@ func (lobby *Lobby) ProcessLeaveMatch(match *Match, leavingPlayer *Player) GameA
 		},
 	}
 }
+
+
+
 
 // -------------------- Funções auxiliares -----------------------------------
 

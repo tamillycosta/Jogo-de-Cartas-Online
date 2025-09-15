@@ -145,9 +145,10 @@ func (lobby *Lobby) processAttackStatus(match *Match, currentPlayer *Player, att
 			"attackPower":    attackPower,
 			"opponentLife":   damageResult.OpponentLifeRemaining,
 			"opponentCardHP": damageResult.OpponentCardHP,
-
+			"score": currentPlayer.Score,
 			"result": func() string {
 				if damageResult.GameEnded {
+					
 					return "WIN"
 				}
 				return "ATTACK_SUCCESS"
