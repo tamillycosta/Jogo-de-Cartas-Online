@@ -6,7 +6,7 @@ import (
 	"fmt"
 	request "jogodecartasonline/api/Request"
 	response "jogodecartasonline/api/Response"
-	
+	"strconv"
 
 	"jogodecartasonline/utils"
 	"log"
@@ -32,7 +32,7 @@ var GlobalPackSystem = &PackSystem{
     PackCooldown: 1 * time.Minute,
 }
 
-// Rotas visiveis 
+// ---------------------------------  Rotas da api -----------------------------------------------
 
 // Metodo Responssavel por adicionar um jogador ao Lobby
 func (lobby *Lobby) AddPlayer(req request.Request, conn net.Conn) response.Response {
@@ -255,61 +255,111 @@ func (lobby *Lobby) GetConnectionStats(req request.Request, conn net.Conn) respo
 }
 
 
-
+// Metodo Responssavel por trocar as cartas do deck de batalha
 func (lobby *Lobby) SelectMatchDeck(req request.Request, conn net.Conn) response.Response {
-    resp := response.Response{}
-    
-    username := req.User
-    oldCardName := req.Params["oldCardName"] // Carta a remover do deck
-    newCardName := req.Params["newCardName"] // Carta a adicionar ao deck
-    
-   
-    var player Player
-    if err := lobby.DB.Preload("Cards").Where("nome = ?", username).First(&player).Error; err != nil {
-        return resp.MakeErrorResponse(404, "Player não encontrado no banco", "")
-    }
-    
-    // Encontra as cartas
-    var oldCard *Card = nil
-    var newCard *Card = nil
-    
-    for _, card := range player.Cards {
-        if card.Nome == oldCardName && card.InDeck {
-            oldCard = card
-        }
-        if card.Nome == newCardName && !card.InDeck {
-            newCard = card
-        }
-    }
-    
-    if oldCard == nil {
-        return resp.MakeErrorResponse(400, "Carta antiga não encontrada no deck", "")
-    }
-    
-    if newCard == nil {
-        return resp.MakeErrorResponse(400, "Carta nova não encontrada ou já está no deck", "")
-    }
-    
-    // Atualiza status no banco
-    oldCard.InDeck = false
-    newCard.InDeck = true
-    
-    lobby.DB.Save(oldCard)
-    lobby.DB.Save(newCard)
-    
-    // Atualiza player logado se existir
-    if loggedPlayer := lobby.Players[username]; loggedPlayer != nil {
-        loggedPlayer.LoadBattleDeck(lobby.DB)
-    }
-    
-    return resp.MakeSuccessResponse("Deck atualizado com sucesso!", map[string]string{
-        "removed": oldCardName,
-        "added":   newCardName,
-    })
+	resp := response.Response{}
+	
+	username := req.User
+	oldCardIndex := req.Params["oldCardIndex"] 
+	newCardIndex := req.Params["newCardIndex"]
+	
+	
+	oldIdx, err1 := strconv.Atoi(oldCardIndex)
+	newIdx, err2 := strconv.Atoi(newCardIndex)
+	
+	if err1 != nil || err2 != nil {
+		fmt.Printf("❌ DEBUG: Erro ao converter índices - err1: %v, err2: %v\n", err1, err2)
+		return resp.MakeErrorResponse(400, "Índices inválidos", "")
+	}
+	
+	var player Player
+	if err := lobby.DB.Preload("Cards").Where("nome = ?", username).First(&player).Error; err != nil {
+		fmt.Printf("❌ DEBUG: Player não encontrado: %v\n", err)
+		return resp.MakeErrorResponse(404, "Player não encontrado no banco", "")
+	}
+	
+	// Separa cartas do deck e outras cartas
+	var deckCards []*Card
+	var otherCards []*Card
+	
+	for _, card := range player.Cards {
+		if card.InDeck {
+			deckCards = append(deckCards, card)
+		} else {
+			otherCards = append(otherCards, card)
+		}
+	}
+	
+	
+	// Valida índices
+	if oldIdx < 0 || oldIdx >= len(deckCards) {
+		return resp.MakeErrorResponse(400, fmt.Sprintf("Índice da carta do deck inválido. Índice: %d, Total no deck: %d", oldIdx, len(deckCards)), "")
+	}
+	
+	if newIdx < 0 || newIdx >= len(otherCards) {
+		return resp.MakeErrorResponse(400, fmt.Sprintf("Índice da carta disponível inválido. Índice: %d, Total disponível: %d", newIdx, len(otherCards)), "")
+	}
+
+	oldCard := deckCards[oldIdx]
+	newCard := otherCards[newIdx]
+	
+	
+	var oldCardFromDB Card
+	var newCardFromDB Card
+	
+	// Busca a carta antiga no banco
+	if err := lobby.DB.Where("id = ? AND player_id = ? AND in_deck = true", oldCard.ID, player.ID).First(&oldCardFromDB).Error; err != nil {
+		
+		return resp.MakeErrorResponse(500, "Carta do deck não encontrada no banco", "")
+	}
+	
+	// Busca a carta nova no banco
+	if err := lobby.DB.Where("id = ? AND player_id = ? AND in_deck = false", newCard.ID, player.ID).First(&newCardFromDB).Error; err != nil {
+	
+		return resp.MakeErrorResponse(500, "Carta disponível não encontrada no banco", "")
+	}
+	
+	tx := lobby.DB.Begin()
+	
+	// Atualiza carta antiga (remove do deck)
+	if err := tx.Model(&oldCardFromDB).Update("in_deck", false).Error; err != nil {
+		tx.Rollback()
+		
+		return resp.MakeErrorResponse(500, "Erro ao remover carta do deck", "")
+	}
+	
+	// Atualiza carta nova (adiciona ao deck)
+	if err := tx.Model(&newCardFromDB).Update("in_deck", true).Error; err != nil {
+		tx.Rollback()
+	
+		return resp.MakeErrorResponse(500, "Erro ao adicionar carta ao deck", "")
+	}
+	
+	// Commit da transação
+	if err := tx.Commit().Error; err != nil {
+	
+		return resp.MakeErrorResponse(500, "Erro ao salvar alterações", "")
+	}
+	
+	fmt.Printf("✅ Troca realizada com sucesso!\n")
+	
+	// Atualiza player logado se existir
+	if loggedPlayer := lobby.Players[username]; loggedPlayer != nil {
+		loggedPlayer.LoadBattleDeck(lobby.DB)
+		fmt.Printf("🔧 Battle deck do player atualizado\n")
+	}
+	
+	return resp.MakeSuccessResponse("Deck atualizado com sucesso!", map[string]string{
+		"type": "CHANGE_DECK_CARD",
+		"removed": oldCardFromDB.Nome,
+		"added":   newCardFromDB.Nome,
+		"newCard-Power": fmt.Sprintf("%d", newCardFromDB.Power),
+		"newCard-Life": fmt.Sprintf("%d", newCardFromDB.Health),
+		"newCard-rarity": newCardFromDB.Rarity,
+	})
 }
 
-
-
+// Metodo Responssavel por listar cartas de um jogador 
 func (lobby *Lobby) ListCards(req request.Request, conn net.Conn) response.Response {
     resp := response.Response{}
     playerID := req.Params["ID"]
@@ -342,6 +392,94 @@ func (lobby *Lobby) ListCards(req request.Request, conn net.Conn) response.Respo
 }
 
 
+// Meotod Responssavel por medir o tempo de resposta do server 
+func (lobby *Lobby) SendUserPing(req request.Request, conn net.Conn) response.Response {
+	resp := response.Response{}
+    fmt.Printf("📡 Ping recebido do usuário: %s\n", req.User)
+    
+  
+    data := map[string]string{
+        "type":        "USER_PONG",
+        "timestamp":   req.Params["timestamp"],
+        "server_time": fmt.Sprintf("%d", time.Now().UnixNano()),
+    }
+	fmt.Printf("📡 Response: %+v\n", resp)
+ 
+    return resp.MakeSuccessResponse("PONG Recebido!", data)
+      
+    
+}
+
+
+// Metodo responssavel por processar uma ação do jogador na partida
+func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) response.Response {
+	resp := response.Response{}
+
+	lobby.Mu.RLock()
+	player := lobby.Players[req.User]
+	lobby.Mu.RUnlock()
+
+	if player == nil {
+		return resp.MakeErrorResponse(404, "Player não encontrado", "")
+	}
+
+	if player.Match == nil {
+		return resp.MakeErrorResponse(400, "Player não está em uma partida", "")
+	}
+
+	match := player.Match
+
+	if match.Status != GAME_STATUS_ACTIVE {
+		return resp.MakeErrorResponse(400, "Partida já finalizada", "")
+	}
+
+	// Possiveis ações de jogador
+	var actionResult GameActionResult
+	switch req.Params["action"] {
+	case ACTION_CHOOSE_CARD:
+		actionResult = lobby.ProcessChoseCard(match, player, req)
+	case ACTION_ATTACK:
+		actionResult = lobby.ProcessAttack(match, player, req)
+	case ACTION_LEAVE_MATCH:
+		actionResult = lobby.ProcessLeaveMatch(match, player)
+	default:
+		return resp.MakeErrorResponse(400, "Ação não reconhecida", "")
+	}
+
+	if actionResult.Success {
+		opponent := lobby.GetOpponent(match, player)
+
+		if actionResult.GameEnded {
+			//  Notifica ambos os players com GAME_ENDED
+			if opponent != nil {
+				// Notifica oponente (perdedor ou vencedor dependendo da situação)
+				isOpponentWinner := (actionResult.Winner != nil && actionResult.Winner.Nome == opponent.Nome)
+				NotifyGameEnd(opponent, actionResult, isOpponentWinner)
+			}
+
+			lobby.CleanupFinishedMatch(match, actionResult.Winner)
+
+		} else {
+			// Jogo continua - notifica oponente normalmente
+
+			if err := NotifyOpponentAction(opponent, actionResult); err != nil {
+				fmt.Printf("⚠️ Erro ao notificar oponente: %v\n", err)
+			}
+
+			// Troca turno
+			lobby.SwitchTurn(match)
+		}
+	}
+
+	return resp.MakeSuccessResponse("Ação processada", map[string]string{
+		"result": utils.Encode(actionResult),
+	})
+}
+
+
+
+
+
 //--------------------------------- Auxliares
 
 // Metodo Responssavel por adicionar jogador a lista de espera para encontrar uma partida
@@ -365,8 +503,6 @@ func (lobby *Lobby) AddToWaitQueue(req request.Request, conn net.Conn) *WaitingP
 
     return waitingPlayer
 }
-
-
 
 // status do sistema
 func (l *Lobby) PrintStats() {
@@ -394,7 +530,6 @@ func (l *Lobby) PrintStats() {
 }
 
 
-
 // Remove player da fila (em caso de timeout ou desconexão)
 func (lobby *Lobby) RemoveFromQueue(targetPlayer *WaitingPlayer) {
 	lobby.Mu.Lock()
@@ -407,7 +542,6 @@ func (lobby *Lobby) RemoveFromQueue(targetPlayer *WaitingPlayer) {
 		}
 	}
 }
-
 
 
 // Verifica se o User esta logado

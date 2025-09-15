@@ -132,9 +132,12 @@ func main() {
     Server.AddRoute("TryMatch", lobby.TryMatchUsers)
     Server.AddRoute("ProcessGameAction", lobby.ProcessGameAction)
     Server.AddRoute("DeletePlayer", lobby.DeletePlayer)
-    Server.AddRoute("connectionStats", lobby.GetConnectionStats)
-    Server.AddRoute("openPack", lobby.OpenCardPack)       
-    Server.AddRoute("packStatus", lobby.CheckPackStatus)   
+    Server.AddRoute("ConnectionStats", lobby.GetConnectionStats)
+    Server.AddRoute("OpenPack", lobby.OpenCardPack)       
+    Server.AddRoute("PackStatus", lobby.CheckPackStatus)   
+    Server.AddRoute("ListCards", lobby.ListCards)
+    Server.AddRoute("SelectMatchDeck", lobby.SelectMatchDeck)
+    Server.AddRoute("SendUserPing", lobby.SendUserPing)
 
     listener, err := net.Listen("tcp", ":8080")
     if err != nil {

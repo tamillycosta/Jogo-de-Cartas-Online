@@ -33,6 +33,7 @@ func (cm *ConnectionMonitor) Start() {
     fmt.Printf("🔍 Sistema de monitoramento de conexões iniciado\n")
 }
 
+
 // Monitor principal que roda em background
 func (cm *ConnectionMonitor) heartbeatMonitor() {
     ticker := time.NewTicker(cm.CheckInterval)
@@ -69,8 +70,6 @@ func (cm *ConnectionMonitor) checkPlayerConnection(player *Player) {
         cm.handleDisconnectedPlayer(player)
         return
     }
-
-    // Verifica último heartbeat
     cm.Mu.RLock()
     lastHeartbeat, exists := cm.PlayerHeartbeat[player.Nome]
     cm.Mu.RUnlock()
@@ -188,7 +187,7 @@ func (cm *ConnectionMonitor) handlePlayerInMatchDisconnect(disconnectedPlayer *P
 
 
 
-// Funções auxiliares
+// Funções auxiliares ---------------------------------------
 
 
 // Remove player da fila de espera
