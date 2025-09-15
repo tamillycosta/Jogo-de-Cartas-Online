@@ -9,6 +9,15 @@ import (
 	"strconv"
 	"fmt"
 	"net"
+	"time"
+	"sync"
+)
+
+
+var (
+	pingStartTime time.Time
+	waitingPong   bool = false
+	pingMutex     sync.Mutex
 )
 
 type Client struct {
@@ -57,6 +66,33 @@ func (c *Client) FoundMatch(player *models.Player) error {
 	return c.SendRequest(req)
 }
 
+func (c *Client) CheckResponseTime() error {
+    pingMutex.Lock()
+    defer pingMutex.Unlock()
+    
+    req := request.Request{
+        User:   c.Nome,
+        Method: "SendUserPing",
+        Params: map[string]string{
+            "timestamp": fmt.Sprintf("%d", time.Now().UnixNano()),
+        },
+    }
+    
+    fmt.Println("📡 Enviando ping para o servidor...")
+    
+    pingStartTime = time.Now()
+    waitingPong = true
+    
+    err := c.SendRequest(req)
+    if err != nil {
+        fmt.Printf("❌ Erro ao enviar ping: %v\n", err)
+        waitingPong = false
+        return err
+    }
+    
+   
+    return nil
+}
 
 
 // --------------------- Requisições para os pacotes
@@ -108,6 +144,9 @@ func (c *Client) ChangeDeckCard(oldCardIndex, newCardIndex int) error {
 	return c.SendRequest(req)
 	
 }
+
+
+
 
 //----------------- Requisições de um match
 
@@ -194,4 +233,18 @@ func DecodePlayer(data interface{}) (*models.Player, error) {
 	}
 
 	return &player, nil
+}
+
+func (c *Client) HandlePongSimple(resp response.Response) {
+    pingMutex.Lock()
+    defer pingMutex.Unlock()
+    
+    if waitingPong {
+        pingDuration := time.Since(pingStartTime)
+        fmt.Printf("\n📡 ✅ Tempo de resposta: %.2f ms\n", 
+            float64(pingDuration.Nanoseconds())/1000000.0)
+        waitingPong = false
+    } else {
+        fmt.Println("\n📡 ⚠️ Pong recebido sem ping correspondente")
+    }
 }

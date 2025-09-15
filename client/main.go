@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	response "jogodecartasonline/api/Response"
-	"jogodecartasonline/client/routes"
+	model "jogodecartasonline/client/routes"
 	"jogodecartasonline/client/screm"
 	"jogodecartasonline/server/game/models"
 	"jogodecartasonline/utils"
@@ -72,6 +72,12 @@ func handleServerMessages(client *model.Client) {
 			continue
 		}
 
+		if resp.Data["type"] == "USER_PONG" {
+			fmt.Println("📡 Pong recebido do servidor")
+			client.HandlePongSimple(resp)
+			continue
+		}
+
 		if isFirstMessage {
 			loginResponse <- resp
 			isFirstMessage = false
@@ -92,6 +98,7 @@ func handleServerMessages(client *model.Client) {
 			result := resp.Data["result"]
 			winner := resp.Data["winner"]
 			reason := resp.Data["reason"]
+			
 
 			if result == "WIN" {
 				fmt.Printf("🎉 VOCÊ VENCEU! 🎉\n")
@@ -131,7 +138,7 @@ func handleServerMessages(client *model.Client) {
 			ProcessListCards(resp, client)
 
 		case "CHANGE_DECK_CARD":
-			ProcessNewDeck(resp,client)
+			ProcessNewDeck(resp, client)
 
 		default:
 			if resp.Message == "Procurando partida..." {
@@ -150,8 +157,8 @@ func handleServerMessages(client *model.Client) {
 				fmt.Println("🎁 Processando pacote aberto...")
 				ProcessPackageOpened(resp, client)
 
-			} else {
-				fmt.Printf("📩 %s\n", resp.Message)
+			}else {
+				fmt.Printf("📩 %s\n", resp.Data["type"])
 			}
 		}
 	}
@@ -226,10 +233,10 @@ func main() {
 			return
 		}
 
-		// LOBBY PRINCIPAL 
+		// LOBBY PRINCIPAL
 		for {
 			// Verifica se está no sistema de pacotes
-			if IsPackageMenuActive() || IsWaitingForPackage(){
+			if IsPackageMenuActive() || IsWaitingForPackage() {
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
@@ -261,6 +268,13 @@ func main() {
 				EnterPackageSystem(&client, player)
 
 			case 3:
+				
+				client.CheckResponseTime()
+				time.Sleep(3 * time.Second)
+
+				inputManager.WaitForEnter()
+
+			case 4:
 				Menu.ClearScreen()
 				fmt.Println("Saindo do jogo...")
 				client.LeaveServer(player.Nome)

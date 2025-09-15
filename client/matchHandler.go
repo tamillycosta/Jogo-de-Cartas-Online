@@ -51,7 +51,8 @@ func ProcessPlayerActionResponse(resp response.Response) {
 			time.Sleep(3 * time.Second)
 			if result, ok := playerResult["result"].(string); ok {
 				if result == "WIN" {
-					fmt.Println("\n🏆 VOCÊ VENCEU! Parabéns!")
+					Menu.ShowplayerGameEnd(playerResult)
+					
 				} else {
 					fmt.Println("   Aguarde a vez do oponente...")
 				}
@@ -112,6 +113,7 @@ func ProcessOpponentAction(notification response.Response) {
 		time.Sleep(3 * time.Second)
 	}
 }
+
 
 // Apresenta ao jogadores o estado dos rouds
 func ShowGameStatus(myName string) {

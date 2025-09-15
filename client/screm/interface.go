@@ -25,6 +25,10 @@ func (*Screm) ClearScreen() {
 	cmd.Run()
 }
 
+
+
+// Menus ----------------------------------------------------------
+
 func (s *Screm) ShowInitalMenu() {
 	fmt.Println("════════════════════════════════════════════════")
 	fmt.Println("✨ Bem-vindo ao 🌟 MagiCards 🌟")
@@ -40,7 +44,8 @@ func (s *Screm) ShowLobbyMenu() {
 	fmt.Println("════════════════════════════════════════════════")
 	fmt.Println("1️⃣  Buscar Partida")
 	fmt.Println("2️⃣  Menu de Cartas")
-	fmt.Println("3️⃣  Sair do Jogo")
+	fmt.Println("3️⃣  Tempo de Resposta")
+	fmt.Println("4️⃣  Sair do Jogo")
 	fmt.Println("════════════════════════════════════════════════")
 }
 
@@ -53,6 +58,52 @@ func (s *Screm) ShowGameLoop() {
 	fmt.Println("3️⃣  Sair da partida")
 	fmt.Println("════════════════════════════════════════════════")
 }
+
+
+func (s *Screm) ShowDeckManagementMenu(){
+
+	fmt.Println("\n════════════════════════════════════════════════")
+	fmt.Println("⚔️ GERENCIAR DECK")
+	fmt.Println("════════════════════════════════════════════════")
+	fmt.Println("1️⃣ Trocar carta do deck")
+	fmt.Println("2️⃣  Voltar ao lobby")
+	fmt.Println("════════════════════════════════════════════════")
+
+}
+
+
+func (s *Screm) ShowCooldownMessage(totalCards string, remaining string) {
+	fmt.Println("\n════════════════════════════════════════════════")
+	fmt.Println("🃏 SISTEMA DE PACOTES")
+	fmt.Println("════════════════════════════════════════════════")
+	fmt.Printf("📊 Total de cartas: %s\n", totalCards)
+	fmt.Printf("⏰   Próximo pacote em: %s\n\n", remaining)
+	fmt.Println("1️⃣  Ver minhas cartas")
+	fmt.Println("2️⃣  Gerenciar deck")
+	fmt.Println("3️⃣. Voltar ao lobby")
+}
+
+
+func (s *Screm) ShowPackageMenu(totalCards string) {
+	fmt.Println("\n════════════════════════════════════════════════")
+	fmt.Println("🃏 SISTEMA DE PACOTES")
+	fmt.Println("════════════════════════════════════════════════")
+	fmt.Printf("📊 Total de cartas: %s\n\n", totalCards)
+	fmt.Println("1️⃣  Abrir pacote")
+	fmt.Println("2️⃣  Ver minhas cartas")
+	fmt.Println("3️⃣  Gerenciar deck")
+	fmt.Println("4️⃣. Voltar ao lobby")
+}
+
+
+
+func (s *Screm) ShowDeckManagementInitial(){
+
+	fmt.Println("\n════════════════════════════════════════════════")
+	fmt.Println("⚔️ GERENCIAR DECK")
+	fmt.Println("════════════════════════════════════════════════")
+}
+// Staus da Partida ------------------------------------------------
 
 func (s *Screm) ShowPlayerResultCard(playerResult map[string]interface{}) {
 	fmt.Println("\n🃏 Você escolheu uma carta!")
@@ -72,7 +123,7 @@ func (s *Screm) ShowPlayerResultAtack(playerResult map[string]interface{}) {
 
 func (s *Screm) ShowOpponentResultCard(opponentResult map[string]interface{}) {
 	fmt.Println("\n🃏 Oponente escolheu uma carta!")
-	fmt.Printf("❌ %s | ⚔️ %.0f | 💚 %.0f\n",
+	fmt.Printf(" %s | ⚔️ %.0f | 💚 %.0f\n",
 		opponentResult["cardName"],
 		opponentResult["cardPower"],
 		opponentResult["cardHealth"])
@@ -90,7 +141,7 @@ func (s *Screm) ShowOpponentResultAtack(opponentResult map[string]interface{}) {
 
 func (s *Screm) ShowFoundMatchMake(response response.Response) {
 	fmt.Println("\n🎉 ================================")
-	fmt.Println("       🚨  PARTIDA ENCONTRADA! 🚨")
+	fmt.Println("       🚨 PARTIDA ENCONTRADA! 🚨")
 	fmt.Println("===================================")
 	fmt.Printf("🆚 Oponente : %s\n", response.Data["opponent"])
 	fmt.Printf("🎯 Match ID : %s\n", response.Data["matchId"])
@@ -107,26 +158,15 @@ func (s *Screm) ShowOpponentGameEnd(opponentResult map[string]interface{}) {
 	fmt.Println("====================================")
 }
 
-
-
-func (s *Screm) ShowCooldownMessage(totalCards string, remaining string) {
-		fmt.Println("📦 === SISTEMA DE PACOTES ===")
-		fmt.Printf("📊 Total de cartas: %s\n", totalCards)
-		fmt.Printf("⏰ Próximo pacote em: %s\n\n", remaining)
-		fmt.Println("1. 🃏 Ver minhas cartas")
-		fmt.Println("2. 🔄 Gerenciar deck")
-		fmt.Println("3. ⬅️ Voltar ao lobby")
+func (s *Screm) ShowplayerGameEnd(playerResult map[string]interface{} ){
+	fmt.Println("\n══════════════════════════════")
+fmt.Println(" 🏆   VOCÊ VENCEU!!! 🎉 ")
+fmt.Println("══════════════════════════════")
+fmt.Printf("   ⭐ Sua pontuação: %d\n", int(playerResult["score"].(float64)))
+fmt.Println("══════════════════════════════")
 }
 
-
-func (s *Screm) ShowPackageMenu(totalCards string) {
-		fmt.Println("📦 === SISTEMA DE PACOTES ===")
-		fmt.Printf("📊 Total de cartas: %s\n\n", totalCards)
-		fmt.Println("1. 📦 Abrir pacote")
-		fmt.Println("2. 🃏 Ver minhas cartas")
-		fmt.Println("3. 🔄 Gerenciar deck")
-		fmt.Println("4. ⬅️ Voltar ao lobby")
-}
+// Sistema de pacotes --------------------------------------------------
 
 
 func (s *Screm) ShowOpenPackResult(totalCards  string){
@@ -134,17 +174,17 @@ func (s *Screm) ShowOpenPackResult(totalCards  string){
 	fmt.Printf("Total de cartas: %s\n\n", totalCards)
 	fmt.Println("🎉 Cartas obtidas:")
 }
-
+ 
 
 func (s *Screm) GetRarityEmoji(rarity string) string {
 	switch rarity {
-	case "Common":
-		return "⚪"
-	case "Rare":
+	case "UNCOMON":
+		return "🟢"
+	case "RARE":
 		return "🔵"
-	case "Epic":
+	case "EPIC":
 		return "🟣"
-	case "Legendary":
+	case "LEGENDARY":
 		return "🟡"
 	default:
 		return "⚪"
@@ -160,8 +200,9 @@ func (s *Screm) ShowListCards(DeckCards []*models.Card, OtherCards []*models.Car
         fmt.Println("⚠️ Nenhuma carta no deck!")
     } else {
         for i, card := range DeckCards {
-            fmt.Printf("%d) %s | ⚔️ %d  💚 %d\n",
-                i+1, card.Nome, card.Power, card.Health)
+			rarity := s.GetRarityEmoji(card.Rarity)
+            fmt.Printf("%d) %s | ⚔️ %d  💚 %d  %s\n",
+                i+1, card.Nome, card.Power, card.Health, rarity)
         }
     }
 
@@ -173,10 +214,46 @@ func (s *Screm) ShowListCards(DeckCards []*models.Card, OtherCards []*models.Car
         fmt.Println("⚠️ Nenhuma carta em estoque!")
     } else {
         for i, card := range OtherCards {
-            fmt.Printf("%d) %s | ⚔️ %d  💚 %d\n",
-                i+1, card.Nome, card.Power, card.Health)
+			rarity := s.GetRarityEmoji(card.Rarity)
+            fmt.Printf("%d) %s | ⚔️ %d  💚 %d  %s\n",
+                i+1, card.Nome, card.Power, card.Health, rarity)
         }
     }
 
+
+
     fmt.Println("══════════════════════════════")
+}
+
+
+func (s *Screm) ShowNewCard(data map[string]string) {
+
+	fmt.Println("\n✨ ==== DECK ATUALIZADO! ====")
+	fmt.Printf("🔄 Carta removida: %s\n", data["removed"])
+	fmt.Printf("🆕 Nova carta adicionada: %s\n", data["added"])
+	fmt.Printf("   Poder: %s | Vida: %s | Raridade: %s\n",
+		data["newCard-Power"],
+		data["newCard-Life"],
+		data["newCard-rarity"])
+	fmt.Println("✅ Deck atualizado com sucesso!")
+}
+
+
+
+func (s *Screm) ShowConfirmChange(selectedOldCard models.Card , selectedNewCard models.Card, oldCardIndex int , newCardIndex int ){
+		// Confirmação
+		fmt.Printf("\n🔄 CONFIRMAR TROCA:\n")
+		fmt.Printf("   ➖ Remover: %s (Índice: %d)\n", selectedOldCard.Nome, oldCardIndex)
+		fmt.Printf("   ➕ Adicionar: %s (Índice: %d)\n", selectedNewCard.Nome, newCardIndex)
+		fmt.Print("\nConfirmar? (s/N): ")
+}
+
+
+
+func (s *Screm) ShowListCard(cards []*models.Card){
+	for i, card := range cards {
+		rarity := s.GetRarityEmoji(card.Rarity)
+		fmt.Printf("   %d. %s %s (⚔️%d 💚%d) \n",
+			i+1, rarity, card.Nome, card.Power, card.Health,)
+	}
 }

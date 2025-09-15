@@ -221,7 +221,7 @@ func ManageDeck(client *model.Client, player *models.Player) {
 
 
 // Seleciona carta para remover e adiconar no deck 
-func HandleCardSwapWithDebug(client *model.Client, deckCards, otherCards []*models.Card) bool {
+func HandleCardSwapWith(client *model.Client, deckCards, otherCards []*models.Card) bool {
 
 	fmt.Println("\n🔄 ===== TROCAR CARTA =====")
 	fmt.Println("Qual carta deseja REMOVER do deck?")
@@ -281,6 +281,7 @@ func HandleCardSwapWithDebug(client *model.Client, deckCards, otherCards []*mode
 
 
 // --------------------- Menus
+
 
 func PackageMenu(client *model.Client, totalCards string, player *models.Player) {
 
@@ -361,7 +362,6 @@ func CooldownMenu(client *model.Client, totalCards, remaining string, player *mo
 	}
 }
 
-// Interface de gerenciamento de deck
 func ShowDeckManagement(client *model.Client, deckCards, otherCards []*models.Card) {
 	for IsDeckMenuActive() {
 		if IsWaitingForDeck() {
@@ -370,10 +370,7 @@ func ShowDeckManagement(client *model.Client, deckCards, otherCards []*models.Ca
 		}
 
 		Menu.ClearScreen()
-		
-		fmt.Println("\n════════════════════════════════════════════════")
-		fmt.Println("⚔️ GERENCIAR DECK")
-		fmt.Println("════════════════════════════════════════════════")
+		Menu.ShowDeckManagementInitial()
 
 		Menu.ShowListCards(deckCards, otherCards)
 	
@@ -398,7 +395,7 @@ func ShowDeckManagement(client *model.Client, deckCards, otherCards []*models.Ca
 				continue
 			}
 
-			if HandleCardSwapWithDebug(client, deckCards, otherCards) {
+			if HandleCardSwapWith(client, deckCards, otherCards) {
 				return 
 			}
 
