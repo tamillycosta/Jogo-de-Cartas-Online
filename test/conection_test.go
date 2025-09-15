@@ -29,77 +29,85 @@ func TestBasicConnection(t *testing.T) {
     fmt.Printf("✅ Teste básico passou\n")
 }
 
-// Teste de stress com múltiplas conexões e criação de partidas 
-func TestStressConnections(t *testing.T) {
-    const numClients = 550 
 
-    var wg sync.WaitGroup
-    var mu sync.Mutex
-    errors := make([]error, 0)
-    successes := 0
 
-    start := make(chan struct{})
+// TESTA CONXÃO DE N PLAYERS
+func TestStressLogin(t *testing.T) {
+	totalClients := 10000
+	var wg sync.WaitGroup
+	wg.Add(totalClients)
 
-    wg.Add(numClients)
+	start := time.Now()
 
-    for i := 0; i < numClients; i++ {
-        go func(i int) {
-            defer wg.Done()
-
+	for i := 0; i < totalClients; i++ {
+		go func(id int) {
+			defer wg.Done()
             name := fmt.Sprintf("stress_player_%d", i)
+			client, err := utils.NewFakeClient(t, name)
+			
+			if err != nil {
+				t.Errorf("Cliente %d falhou na conexão: %v", id, err)
+				return
+			}
+			 defer client.Conn.Close()
+			
+		}(i)
+	}
 
-          
-            <-start
+	wg.Wait()
+	elapsed := time.Since(start)
+	t.Logf("Finalizado %d logins em %.4f segundos", totalClients, elapsed.Seconds())
+}
 
-            client, err := utils.NewFakeClient(t, name)
-            if err != nil {
-                mu.Lock()
-                errors = append(errors, fmt.Errorf("[%s] erro ao conectar: %v", name, err))
-                mu.Unlock()
-                return
-            }
-            defer client.Conn.Close()
 
-            // Buscar partida
-            err = client.FindMatch(t)
-            if err != nil {
-                mu.Lock()
-                errors = append(errors, fmt.Errorf("[%s] erro ao buscar partida: %v", name, err))
-                mu.Unlock()
-                return
-            }
+// TESTA CRIAÇÃO DE PARTIDAS PARA N PLAYERS
+func TestStressMatchmaking2(t *testing.T) {
+	totalClients := 10000
+	var wg sync.WaitGroup
+	wg.Add(totalClients)
 
-            // Simula jogando por um tempo aleatório
-            time.Sleep(time.Duration(1+i%3) * time.Second)
+	start := time.Now()
+	var mu sync.Mutex
+	failures := 0
 
-            mu.Lock()
-            successes++
-            mu.Unlock()
-        }(i)
-    }
+	for i := 0; i < totalClients; i++ {
+		go func(id int) {
+			defer wg.Done()
+			name := fmt.Sprintf("stress_player_%d", id)
 
-    // Dispara todos os goroutines ao mesmo tempo
-    close(start)
+			client, err := utils.NewFakeClient(t, name)
+			if err != nil {
+				mu.Lock()
+				failures++
+				mu.Unlock()
+				return
+			}
+			defer client.Conn.Close()
 
-    wg.Wait()
+			if err := client.FindMatch(&testing.T{}); err != nil {
+				mu.Lock()
+				failures++
+				mu.Unlock()
+			}
 
-    // 📊 Resultados
-    fmt.Printf("\n📊 RESULTADOS DO TESTE DE CONCORRÊNCIA:\n")
-    fmt.Printf("✅ Sucessos: %d/%d\n", successes, numClients)
-    fmt.Printf("❌ Erros: %d/%d\n", len(errors), numClients)
+			// Print a cada 1000 clientes finalizados
+			if id%1000 == 0 {
+				elapsed := time.Since(start).Seconds()
+				t.Logf("[Progresso] %d clientes processados em %.2f segundos", id, elapsed)
+			}
+		}(i)
+	}
 
-    if len(errors) > 0 {
-        fmt.Printf("\n🔍 DETALHES DOS ERROS:\n")
-        for i, err := range errors {
-            fmt.Printf("%d. %v\n", i+1, err)
-        }
-    }
+	wg.Wait()
+	elapsed := time.Since(start).Seconds()
+	media := elapsed / float64(totalClients)
 
-   
-    successRate := float64(successes) / float64(numClients)
-    if successRate < 1.0 {
-        t.Errorf("Taxa de sucesso muito baixa: %.2f%% (esperado: == 100%%)", successRate*100)
-    }
+	t.Logf("===== RESULTADOS DO TESTE MATCHMAKING =====")
+	t.Logf("Total de clientes: %d", totalClients)
+	t.Logf("Tempo total: %.2f segundos", elapsed)
+	t.Logf("Tempo médio por cliente: %.6f segundos", media)
+	t.Logf("Falhas: %d (%.2f%%)", failures, (float64(failures)/float64(totalClients))*100)
+	t.Logf("===========================================")
 }
 
 

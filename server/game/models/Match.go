@@ -20,7 +20,7 @@ const (
 	GAME_STATUS_ENDED  = "ENDED"
 
 	// Configurações do jogo
-	INITIAL_PLAYER_LIFE = 3
+	INITIAL_PLAYER_LIFE = 1
 )
 
 // Estrutura para representar um jogador na lista de espera
@@ -64,6 +64,7 @@ type DamageResult struct {
 	OpponentCardHP        int
 	GameEnded             bool
 	Winner                *Player
+	
 }
 
 // retorna uma nova partida

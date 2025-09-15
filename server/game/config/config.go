@@ -33,7 +33,7 @@ func CretaeTable() gorm.DB{
 	if err != nil {
 		panic("Falha ao criar tabelas")
 	}
-	fmt.Print("mIGRAÇÃO FEITA")
+	
 	return  *db
 }
 

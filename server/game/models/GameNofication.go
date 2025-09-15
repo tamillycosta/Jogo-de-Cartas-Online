@@ -28,7 +28,7 @@ func NotifyMatchFound(waitingPlayer *WaitingPlayer, match *Match, opponent *Play
 	message := append(data, '\n')
 	_, err = waitingPlayer.Conn.Write(message)
 	if err != nil {
-		fmt.Printf("❌ Erro ao notificar %s: %v\n", waitingPlayer.Player.Nome, err)
+
 		return
 	}
 
@@ -64,7 +64,7 @@ func NotifyGameEnd(player *Player, gameResult GameActionResult, isWinner bool) {
     message_bytes := append(data, '\n')
     _, err = player.Conn.Write(message_bytes)
     if err != nil {
-        fmt.Printf("❌ Erro ao notificar fim de jogo para %s: %v\n", player.Nome, err)
+        
         return
     }
 
@@ -125,7 +125,7 @@ func (cm *ConnectionMonitor) notifyOpponentWinByDisconnect(opponent *Player) {
     message_bytes := append(data, '\n')
     _, err = opponent.Conn.Write(message_bytes)
     if err != nil {
-        fmt.Printf("❌ Erro ao notificar fim de jogo para %s: %v\n", opponent.Nome, err)
+     
         return
     }
 
@@ -145,7 +145,7 @@ func (lobby *Lobby) processAttackStatus(match *Match, currentPlayer *Player, att
 			"attackPower":    attackPower,
 			"opponentLife":   damageResult.OpponentLifeRemaining,
 			"opponentCardHP": damageResult.OpponentCardHP,
-			"score": currentPlayer.Score,
+			"score": damageResult.Winner.Score,
 			"result": func() string {
 				if damageResult.GameEnded {
 					

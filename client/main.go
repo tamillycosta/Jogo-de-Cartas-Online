@@ -58,7 +58,7 @@ func handleServerMessages(client *model.Client) {
 	for {
 		resp, err := client.ReceiveResponse()
 		if err != nil {
-			fmt.Printf("❌ Erro ao receber: %v\n", err)
+		
 			return
 		}
 
@@ -188,7 +188,7 @@ func main() {
 	fmt.Scanln(&opcao)
 
 	if opcao == 1 {
-		conn, err := net.Dial("tcp", "localhost:8080")
+		conn, err := net.Dial("tcp", "172.16.201.11")
 		if err != nil {
 			fmt.Println("Erro ao conectar no servidor:", err)
 			return

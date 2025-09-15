@@ -52,8 +52,6 @@ func handleConnection(conn net.Conn, monitor *models.ConnectionMonitor) {
         if err != nil {
             if err == io.EOF {
                 fmt.Printf("Cliente %s desconectou (EOF)\n", conn.RemoteAddr())
-            } else {
-                fmt.Printf("Erro ao ler de %s: %v\n", conn.RemoteAddr(), err)
             }
             
             // Se temos player identificado, processa desconexão

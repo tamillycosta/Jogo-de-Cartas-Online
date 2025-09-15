@@ -220,6 +220,7 @@ func GeneratePackCard(playerID string) *Card {
 		MarkSpecialCardUsed(templateID)
 		return CreatePlayerCard(templateID, playerID)
 	}
+	DebugCardState()
 
 	// Se esgotou a versão original, cria uma nova versão
 	return CreateNextVersion(templateID, playerID)
@@ -396,7 +397,7 @@ func InitializeCardCounts() {
 
 // Função de debug para mostrar estado atual
 func DebugCardState() {
-	fmt.Println("\n📊 === ESTADO ATUAL DAS CARTAS ===")
+	fmt.Println("\n📊 === ESTADO ATUAL DO ESTOQUE DE CARTAS ===")
 	
 	// Agrupa por raridade
 	rarityGroups := make(map[string][]string)
