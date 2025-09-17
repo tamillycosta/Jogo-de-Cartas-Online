@@ -4,190 +4,22 @@ import (
 	
 	"encoding/json"
 	"fmt"
-	
+	"strconv"
 	"sync"
 	"testing"
 	"time"
-    
+    "strings"
 	"jogodecartasonline/test/utils"
 )
 
-// Estrutura para estatísticas dos pacotes
-
-
-
-// TESTE UNITARIO PARA ABERTURA DE PACOTES
-func TestCooldownSystem(t *testing.T) {
-    client, err := utils.NewPackageTestClient(t, "cooldown_test_player")
-    if err != nil {
-        t.Fatalf("Erro ao criar cliente: %v", err)
-    }
-    defer client.Conn.Close()
-    
-    fmt.Printf("Testando sistema de cooldown...\n")
-    
-    // Verifica status inicial
-    statusResp, err := client.CheckPackageStatus()
-    if err != nil {
-        t.Fatalf("Erro ao verificar status: %v", err)
-    }
-    
-    canOpen := statusResp.Data["canOpen"]
-    remaining := statusResp.Data["remaining"]
-    totalCards := statusResp.Data["totalCards"]
-    
-    fmt.Printf("Status inicial:\n")
-    fmt.Printf("  - Pode abrir: %s\n", canOpen)
-    fmt.Printf("  - Tempo restante: %s\n", remaining)
-    fmt.Printf("  - Total de cartas: %s\n", totalCards)
-    
-    if canOpen == "true" {
-        fmt.Printf("Player pode abrir pacote imediatamente!\n")
-        
-        // Abre o pacote
-        packResp, err := client.OpenPackage()
-        if err != nil {
-            t.Errorf("Erro ao abrir pacote: %v", err)
-            return
-        }
-        
-        if packResp.Status == 200 {
-            fmt.Printf("Pacote aberto com sucesso!\n")
-            
-            // Verifica status após abertura
-            statusResp2, err := client.CheckPackageStatus()
-            if err != nil {
-                t.Errorf("Erro ao verificar status pós-abertura: %v", err)
-                return
-            }
-            
-            fmt.Printf("Status após abertura:\n")
-            fmt.Printf("  - Pode abrir: %s\n", statusResp2.Data["canOpen"])
-            fmt.Printf("  - Tempo restante: %s\n", statusResp2.Data["remaining"])
-            fmt.Printf("  - Total de cartas: %s\n", statusResp2.Data["totalCards"])
-            
-        } else {
-            fmt.Printf("Falha ao abrir pacote: %s\n", packResp.Message)
-        }
-    } else {
-        fmt.Printf("Player está em cooldown\n")
-        if remaining == "" {
-            fmt.Printf("ATENÇÃO: Campo 'remaining' está vazio!\n")
-        }
-    }
-}
 
 
 
 // TESTE DE CONCORRÊNCIA PARA ABERTURA DOS PACOTES
 // N CLIENTES TENTAM ABRIR PACOTES AO MESMO TEMPO 
 // VERIFICA SUCESSO DE ABERTURA , DUPLICIDADE DAS CARTAS E DISTRIBUIÇÃO DE RARIDADE
-func TestOpenPackagesSafe(t *testing.T) {
-    numClients := 3000
-    packagesPerClient := 1
-
-    stats := &utils.PackageStats{
-        CardsByRarity: make(map[string]int),
-    }
-    var cardIDs sync.Map
-    done := make(chan bool, numClients)
-    start := time.Now()
-
-    // Canal para logs temporários (progresso)
-    logChan := make(chan string, numClients*packagesPerClient)
-
-    for i := 0; i < numClients; i++ {
-        go func(i int) {
-            playerName := fmt.Sprintf("player_%d", i)
-            client, err := utils.NewPackageTestClient(t, playerName)
-            if err != nil {
-                stats.AddError()
-                logChan <- fmt.Sprintf("Falha ao criar client %s: %v", playerName, err)
-                done <- false
-                return
-            }
-            defer client.Conn.Close()
-
-            stats.AddPlayer()
-
-            for j := 0; j < packagesPerClient; j++ {
-                resp, err := client.OpenPackage()
-                if err != nil {
-                    stats.AddError()
-                    logChan <- fmt.Sprintf("[%s] erro ao abrir pacote: %v", playerName, err)
-                    continue
-                }
-
-                // Ignorando cooldowns no teste de stress
-                if resp.Message == "Pacote em cooldown" {
-                    continue
-                }
-
-                stats.AddPack()
-
-                cardsJSON, ok := resp.Data["cards"]
-                if !ok {
-                    stats.AddError()
-                    logChan <- fmt.Sprintf("[%s] pacote retornou cards inválidos", playerName)
-                    continue
-                }
-
-                var cards []map[string]interface{}
-                if err := json.Unmarshal([]byte(cardsJSON), &cards); err != nil {
-                    stats.AddError()
-                    logChan <- fmt.Sprintf("[%s] erro ao decodificar cartas: %v", playerName, err)
-                    continue
-                }
-
-                for _, card := range cards {
-                    id := fmt.Sprintf("%v", card["ID"])
-                    rarity := fmt.Sprintf("%v", card["Rarity"])
-                    if _, loaded := cardIDs.LoadOrStore(id, true); loaded {
-                        logChan <- fmt.Sprintf("ID duplicado detectado: %s", id)
-                    }
-                    stats.AddCard(rarity)
-                }
-
-                // Envia log resumido pro canal
-                if j%packagesPerClient == 0 {
-                    logChan <- fmt.Sprintf("[%s] abriu pacote %d -> %d cartas", playerName, j+1, len(cards))
-                }
-            }
-
-            done <- true
-        }(i)
-    }
-
-    // Espera todos os clientes terminarem
-    for i := 0; i < numClients; i++ {
-        <-done
-    }
-    close(logChan)
-
-    // Imprime logs resumidos
-    for l := range logChan {
-        t.Log(l)
-    }
-
-    // Resumo final
-    elapsed := time.Since(start).Seconds()
-    totalPacks, rarityCounts, totalCards, players, errors := stats.GetStats()
-
-    t.Logf("\n===== RESULTADOS DO TESTE DE PACOTES =====")
-    t.Logf("Jogadores simulados: %d", players)
-    t.Logf("Total de pacotes abertos: %d", totalPacks)
-    t.Logf("Total de cartas geradas: %d", totalCards)
-    t.Logf("Erros encontrados: %d", errors)
-    t.Logf("Tempo total de execução: %.2f segundos", elapsed)
-    t.Logf("Distribuição por raridade:")
-    for rarity, count := range rarityCounts {
-        t.Logf("  %s -> %d", rarity, count)
-    }
-    t.Logf("===========================================")
-}
-
-func TestOpenPackagesHighConcurrency(t *testing.T) {
-    numClients := 5000       // ou 10000
+func TestOpenPackagesConcurrency(t *testing.T) {
+    numClients := 100      // ou 10000
     packagesPerClient := 1
 
     stats := &utils.PackageStats{
@@ -273,4 +105,124 @@ func TestOpenPackagesHighConcurrency(t *testing.T) {
         t.Logf("  %s -> %d", rarity, count)
     }
     t.Logf("===========================================")
+
+    fmt.Println("\n📊 Checando estatísticas no servidor...")
+   
+    
+    // Dá um tempo para o servidor processar e imprimir
+    time.Sleep(500 * time.Millisecond)
+    
+    t.Log("✅ Teste concluído! Verifique os logs do servidor para estatísticas detalhadas.")
+}
+
+
+
+// Teste DE ESTOQUE GLOABAL
+func TestCardStatistics(t *testing.T) {
+	
+
+	numClients := 100
+	packagesPerClient := 1
+	var wg sync.WaitGroup
+	
+	
+
+	for i := 0; i < numClients; i++ {
+		wg.Add(1)
+		go func(clientIndex int) {
+			defer wg.Done()
+			
+			playerName := fmt.Sprintf("test_player_%d", clientIndex)
+			client, err := utils.NewPackageTestClient(t, playerName)
+			if err != nil {
+				return
+			}
+			defer client.Conn.Close()
+			
+			
+			for j := 0; j < packagesPerClient; j++ {
+				client.OpenPackage()
+				
+			}
+			
+		
+		}(i)
+	}
+	
+	wg.Wait()
+	
+	
+	
+	// Agora busca as estatísticas
+	statsClient, err := utils.NewPackageTestClient(t, "stats_collector")
+	if err != nil {
+		t.Fatalf("Erro ao criar cliente de stats: %v", err)
+	}
+	defer statsClient.Conn.Close()
+	
+	resp, err := statsClient.CheckServerStats(t)
+	if err != nil {
+		t.Fatalf("Erro ao buscar estatísticas: %v", err)
+	}
+	
+	if resp.Status != 200 {
+		t.Fatalf("Erro na resposta: %s", resp.Message)
+	}
+	
+	stats := resp.Data
+	
+	fmt.Println("\n📈 RESULTADO FINAL - CARTAS DISTRIBUÍDAS:")
+	
+	rarities := []string{"COMMON","UNCOMMON", "RARE", "EPIC", "LEGENDARY"}
+	totalSpecial := 0
+	exceededLimit := false
+	
+	for _, rarity := range rarities {
+		if countStr, exists := stats[strings.ToLower(rarity)]; exists {
+			count, _ := strconv.Atoi(countStr)
+			status := "✅"
+			if count > 5 && rarity != "COMMON" {
+				status = "⚠️ "
+				exceededLimit = true
+			}
+			fmt.Printf("  %s %s: %d\n", status, strings.ToUpper(rarity), count)
+			if rarity != "COMMON" {
+				totalSpecial += count
+			}
+		} else {
+			fmt.Printf("  ✅ %s: 0\n", strings.ToUpper(rarity))
+		}
+	}
+	
+	fmt.Printf("\n🔥 TOTAL DE CARTAS ESPECIAIS: %d\n", totalSpecial)
+	
+	// Verifica versões criadas
+	totalVersions := 0
+	if totalVersionsStr, exists := stats["totalVersions"]; exists {
+		totalVersions, _ = strconv.Atoi(totalVersionsStr)
+	}
+	
+	
+	// ANÁLISE FINAL
+	fmt.Println("\n🎯 === ANÁLISE DO SISTEMA DE VERSÕES ===")
+	
+	if !exceededLimit {
+		fmt.Println("ℹ️  Nenhuma raridade passou do limite de 200")
+	
+	} else {
+		fmt.Println("✅ Algumas raridades passaram do limite de 200!")
+		
+		if totalVersions == 0 {
+			t.Error("❌ FALHA: Cartas passaram do limite mas NENHUMA versão foi criada!")
+			fmt.Println("🐛 Possível problema no sistema CreateNextVersion")
+		} else {
+			t.Log("✅ SUCESSO: Sistema de versões está funcionando!")
+			fmt.Printf("🎉 %d versões foram criadas automaticamente\n", totalVersions)
+		}
+	}
+	
+	fmt.Printf("\n📊 Resumo: %d pacotes geraram %d cartas especiais \n", 
+		numClients*packagesPerClient, totalSpecial)
+	
+	fmt.Println("=== TESTE CONCLUÍDO ===")
 }

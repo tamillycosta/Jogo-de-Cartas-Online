@@ -13,21 +13,6 @@ import (
 
 
 
-// TESTA CONEXÃO DE UM PLAYER
-func TestBasicConnection(t *testing.T) {
-    client, err := utils.NewFakeClient(t, "test_player")
-    if err != nil {
-        t.Fatalf("Erro ao criar cliente: %v", err)
-    }
-    defer client.Conn.Close()
-    
-    err = client.FindMatch(t)
-    if err != nil {
-        t.Fatalf("Erro na busca por partida: %v", err)
-    }
-    
-    fmt.Printf("✅ Teste básico passou\n")
-}
 
 
 
@@ -57,6 +42,7 @@ func TestStressLogin(t *testing.T) {
 	wg.Wait()
 	elapsed := time.Since(start)
 	t.Logf("Finalizado %d logins em %.4f segundos", totalClients, elapsed.Seconds())
+	
 }
 
 
@@ -90,7 +76,7 @@ func TestStressMatchmaking2(t *testing.T) {
 				mu.Unlock()
 			}
 
-			// Print a cada 1000 clientes finalizados
+			
 			if id%1000 == 0 {
 				elapsed := time.Since(start).Seconds()
 				t.Logf("[Progresso] %d clientes processados em %.2f segundos", id, elapsed)

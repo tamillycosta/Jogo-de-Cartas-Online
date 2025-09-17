@@ -136,6 +136,8 @@ func main() {
     Server.AddRoute("ListCards", lobby.ListCards)
     Server.AddRoute("SelectMatchDeck", lobby.SelectMatchDeck)
     Server.AddRoute("SendUserPing", lobby.SendUserPing)
+    Server.AddRoute("GetStats", lobby.GetStats)
+
 
     listener, err := net.Listen("tcp", ":8080")
     if err != nil {
