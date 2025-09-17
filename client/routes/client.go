@@ -108,7 +108,6 @@ func (c *Client) CheckPackStatus(username string) error {
 
 }
 
-
 // requisições de abrir pacote
 func (c *Client) OpenPack(username string) error {
 	req := request.Request{
@@ -144,6 +143,8 @@ func (c *Client) ChangeDeckCard(oldCardIndex, newCardIndex int) error {
 	return c.SendRequest(req)
 	
 }
+
+
 
 
 
@@ -186,6 +187,38 @@ func (c *Client) LeaveMatch(player *models.Player) error {
 	}
 	return c.SendRequest(req)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // -----  METODOS AUXILIARES ------
 func (c *Client) SendRequest(req request.Request) error {
@@ -247,4 +280,39 @@ func (c *Client) HandlePongSimple(resp response.Response) {
     } else {
         fmt.Println("\n📡 ⚠️ Pong recebido sem ping correspondente")
     }
+}
+func (c *Client) GetStatistics() (map[string]string, error) {
+	req := request.Request{
+		Method: "GetStats",
+		User:   c.Nome,
+		Params: map[string]string{},
+	}
+
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = c.Conn.Write(reqBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Lê resposta
+	buffer := make([]byte, 4096)
+	n, err := c.Conn.Read(buffer)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp response.Response
+	if err := json.Unmarshal(buffer[:n], &resp); err != nil {
+		return nil, err
+	}
+
+	if resp.Status != 200 {
+		return nil, fmt.Errorf("erro: %s", resp.Message)
+	}
+
+	return resp.Data, nil
 }

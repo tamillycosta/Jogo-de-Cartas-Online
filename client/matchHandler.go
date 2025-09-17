@@ -63,6 +63,10 @@ func ProcessPlayerActionResponse(resp response.Response) {
 		if playerResult := gameAction.PlayerResult; playerResult != nil {
 			fmt.Println("\n👋 Você saiu da partida")
 		}
+		matchState.mu.Lock()
+		matchState.InGame = false
+		matchState.mu.Unlock()
+	
 	}
 
 	if gameAction.GameEnded {

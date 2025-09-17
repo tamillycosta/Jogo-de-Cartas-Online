@@ -104,6 +104,10 @@ func handleServerMessages(client *model.Client) {
 				fmt.Printf("🎉 VOCÊ VENCEU! 🎉\n")
 				if reason == "leaveMatch" {
 					fmt.Println("Oponente desistiu da partida")
+					matchState.mu.Lock()
+					matchState.InGame = false
+					matchState.mu.Unlock()
+					time.Sleep(3 * time.Second)
 				} else {
 					fmt.Println("Parabéns pela vitória!")
 				}
@@ -188,7 +192,7 @@ func main() {
 	fmt.Scanln(&opcao)
 
 	if opcao == 1 {
-		conn, err := net.Dial("tcp", "172.16.201.11")
+		conn, err := net.Dial("tcp", "localhost:8080")
 		if err != nil {
 			fmt.Println("Erro ao conectar no servidor:", err)
 			return
@@ -272,9 +276,13 @@ func main() {
 				client.CheckResponseTime()
 				time.Sleep(3 * time.Second)
 
+				inputManager.WaitForEnter()			
+			case 4 : 
+				Menu.ShowGameIntro()
+				fmt.Println("Aperte enter para voltar ao lobby")
 				inputManager.WaitForEnter()
 
-			case 4:
+			case 5:
 				Menu.ClearScreen()
 				fmt.Println("Saindo do jogo...")
 				client.LeaveServer(player.Nome)

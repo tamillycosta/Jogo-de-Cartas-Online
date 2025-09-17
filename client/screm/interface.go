@@ -44,8 +44,9 @@ func (s *Screm) ShowLobbyMenu() {
 	fmt.Println("════════════════════════════════════════════════")
 	fmt.Println("1️⃣  Buscar Partida")
 	fmt.Println("2️⃣  Menu de Cartas")
-	fmt.Println("3️⃣  Tempo de Resposta")
-	fmt.Println("4️⃣  Sair do Jogo")
+	fmt.Println("3️⃣  Ping")
+	fmt.Println("4️⃣  Regras do Jogo")
+	fmt.Println("5️⃣  Sair do Jogo")
 	fmt.Println("════════════════════════════════════════════════")
 }
 
@@ -160,10 +161,12 @@ func (s *Screm) ShowOpponentGameEnd(opponentResult map[string]interface{}) {
 
 func (s *Screm) ShowplayerGameEnd(playerResult map[string]interface{} ){
 	fmt.Println("\n══════════════════════════════")
-fmt.Println(" 🏆   VOCÊ VENCEU!!! 🎉 ")
+fmt.Println(" 🏆 	  VOCÊ VENCEU!!! 🎉 ")
 fmt.Println("══════════════════════════════")
-fmt.Printf("   ⭐ Sua pontuação: %d\n", int(playerResult["score"].(float64)))
+fmt.Println("\n══════════════════════════════")
+fmt.Println(" 🏆 	   SEU SCORE!!!  🏆 ")
 fmt.Println("══════════════════════════════")
+fmt.Printf("score %d", playerResult["score"] )
 }
 
 // Sistema de pacotes --------------------------------------------------
@@ -256,4 +259,23 @@ func (s *Screm) ShowListCard(cards []*models.Card){
 		fmt.Printf("   %d. %s %s (⚔️%d 💚%d) \n",
 			i+1, rarity, card.Nome, card.Power, card.Health,)
 	}
+}
+
+func (s *Screm) ShowGameIntro() {
+    fmt.Println("══════════════════════════════════════════════")
+    fmt.Println("🌟 Bem-vindo ao 🌟")
+    fmt.Println("🎴 M A G I C A R D S 🎴")
+    fmt.Println("══════════════════════════════════════════════")
+    fmt.Println("\n📖 Era uma vez...")
+    fmt.Println("Em um mundo onde a batalha e a fantasia se misturam,")
+    fmt.Println("os maiores mestres duelam em busca da glória suprema!")
+    fmt.Println("\n⚔️ Suas cartas são suas armas, sua estratégia é seu poder.")
+    fmt.Println("Colecione, monte seu deck e prove seu valor em combate.")
+    fmt.Println("\n📜 REGRAS DO JOGO:")
+    fmt.Println("1️⃣ Cada jogador começa com 3 vidas ❤️❤️❤️")
+    fmt.Println("2️⃣ Cada carta perdida → custa 1 vida")
+    fmt.Println("3️⃣ Ao perder todas as vidas, o jogador é derrotado ☠️")
+    fmt.Println("4️⃣ Não existe sistema de pontuação, apenas vitória ou derrota")
+    fmt.Println("\n✨ Prepare-se, duelista... sua jornada começa agora!")
+    fmt.Println("══════════════════════════════════════════════")
 }

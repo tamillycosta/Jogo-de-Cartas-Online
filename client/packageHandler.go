@@ -263,7 +263,7 @@ func HandleCardSwapWith(client *model.Client, deckCards, otherCards []*models.Ca
 	newCardIndex := newChoice - 1
 	selectedNewCard := otherCards[newCardIndex]
 	
-	Menu.ShowConfirmChange(*selectedNewCard,*selectedOldCard,oldCardIndex, newCardIndex)
+	Menu.ShowConfirmChange(*selectedOldCard,*selectedNewCard,oldCardIndex, newCardIndex)
 	
 	confirm := inputManager.ReadString()
 	if strings.ToLower(strings.TrimSpace(confirm)) != "s" {
