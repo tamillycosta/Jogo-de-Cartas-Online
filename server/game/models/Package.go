@@ -15,12 +15,11 @@ var CardVersions = make(map[string]int)
 type CardRarity string
 
 const (
-	COMMON    CardRarity = "COMMON"    
+	COMMON    CardRarity = "COMMON"
 	UNCOMMON  CardRarity = "UNCOMMON"
-	RARE      CardRarity = "RARE"      
-	EPIC      CardRarity = "EPIC"      
-	LEGENDARY CardRarity = "LEGENDARY" 
-
+	RARE      CardRarity = "RARE"
+	EPIC      CardRarity = "EPIC"
+	LEGENDARY CardRarity = "LEGENDARY"
 )
 
 // Cartas Template (estoque global)
@@ -115,7 +114,7 @@ var BaseCards = map[string]Card{
 		Health:     300,
 		Rarity:     string(LEGENDARY),
 		IsSpecial:  true,
-		MaxCopies:  200,
+		MaxCopies:  100,
 	},
 	"legend_archmage": {
 		TemplateID: "legend_archmage",
@@ -124,7 +123,7 @@ var BaseCards = map[string]Card{
 		Health:     280,
 		Rarity:     string(LEGENDARY),
 		IsSpecial:  true,
-		MaxCopies:  200,
+		MaxCopies:  100,
 	},
 	"epic_shadow_witch": {
 		TemplateID: "epic_shadow_witch",
@@ -195,13 +194,11 @@ func CreatePlayerCard(templateID, playerID string) *Card {
 
 }
 
-
 // Geração de carta de pacote
 func GeneratePackCard(playerID string) *Card {
 	rarity := rollRarity()
 	availableCards := getCardsByRarity(rarity)
 
-	
 	if len(availableCards) == 0 {
 		availableCards = getCardsByRarity(COMMON)
 	}
@@ -213,20 +210,17 @@ func GeneratePackCard(playerID string) *Card {
 		return CreatePlayerCard(templateID, playerID)
 	}
 
-	// Para cartas especiais 
+	// Para cartas especiais
 	// Verifica se ainda tem da versão original
 	if IsSpecialCardAvailable(templateID) {
-		
+
 		MarkSpecialCardUsed(templateID)
 		return CreatePlayerCard(templateID, playerID)
 	}
-	DebugCardState()
 
 	// Se esgotou a versão original, cria uma nova versão
 	return CreateNextVersion(templateID, playerID)
 }
-
-
 
 func GenerateInicialCards(playerId string) []*Card {
 
@@ -251,10 +245,8 @@ func GenerateInicialCards(playerId string) []*Card {
 	return cards
 }
 
-
 func IsSpecialCardAvailable(templateID string) bool {
 	baseCard := BaseCards[templateID]
-
 
 	if baseCard.Rarity == string(COMMON) {
 		return true
@@ -263,7 +255,7 @@ func IsSpecialCardAvailable(templateID string) bool {
 	distributed := SpecialCardCount[templateID]
 
 	if distributed >= baseCard.MaxCopies {
-		fmt.Printf("⚠️  A carta %s está esgotada (%d/%d)\n", 
+		fmt.Printf("⚠️  A carta %s está esgotada (%d/%d)\n",
 			baseCard.Nome, distributed, baseCard.MaxCopies)
 		return false
 	}
@@ -279,15 +271,13 @@ func MarkSpecialCardUsed(templateID string) {
 func CreateNextVersion(originalTemplateID string, playerID string) *Card {
 	baseCard := BaseCards[originalTemplateID]
 
-	
 	CardVersions[originalTemplateID]++
-	version := CardVersions[originalTemplateID] 
+	version := CardVersions[originalTemplateID]
 
 	fmt.Printf("🔧 DEBUG: Criando nova versão para %s - Versão: %d\n", baseCard.Nome, version)
-	
+
 	newPower, newHealth := generateRandomStats(baseCard.Rarity)
 
-	
 	newCard := Card{
 		ID:         uuid.NewString(),
 		TemplateID: fmt.Sprintf("%s_v%d", originalTemplateID, version),
@@ -297,11 +287,10 @@ func CreateNextVersion(originalTemplateID string, playerID string) *Card {
 		Rarity:     baseCard.Rarity,
 		PlayerId:   playerID,
 		IsSpecial:  true,
-		MaxCopies:  baseCard.MaxCopies, 
+		MaxCopies:  baseCard.MaxCopies,
 		InDeck:     false,
 	}
 
-	
 	BaseCards[newCard.TemplateID] = newCard
 
 	SpecialCardCount[newCard.TemplateID] = 1
@@ -334,7 +323,7 @@ func getCardsByRarity(rarity CardRarity) []string {
 	var available []string
 
 	for templateID, card := range BaseCards {
-		
+
 		if card.Rarity == string(rarity) {
 			available = append(available, templateID)
 		}
@@ -370,11 +359,8 @@ func generateRandomStats(rarity string) (int, int) {
 	return power, health
 }
 
-
-
 func InitializeCardCounts() {
 	fmt.Println("🔧 Inicializando contadores de cartas especiais...")
-	
 
 	for templateID, card := range BaseCards {
 		if card.Rarity != string(COMMON) {
@@ -384,43 +370,60 @@ func InitializeCardCounts() {
 			}
 		}
 	}
-	
-	
+
 	for templateID := range BaseCards {
 		if _, exists := CardVersions[templateID]; !exists {
 			CardVersions[templateID] = 0
 		}
 	}
-	
+
 	fmt.Println("✅ Contadores inicializados!")
 }
 
 // Função de debug para mostrar estado atual
-func DebugCardState() {
-	fmt.Println("\n📊 === ESTADO ATUAL DO ESTOQUE DE CARTAS ===")
-	
-	// Agrupa por raridade
-	rarityGroups := make(map[string][]string)
-	for templateID, card := range BaseCards {
-		if card.Rarity != string(COMMON) {
-			rarityGroups[card.Rarity] = append(rarityGroups[card.Rarity], templateID)
-		}
-	}
-	
-	for rarity, templateIDs := range rarityGroups {
-		fmt.Printf("\n%s:\n", rarity)
-		for _, templateID := range templateIDs {
-			card := BaseCards[templateID]
-			count := SpecialCardCount[templateID]
-			available := IsSpecialCardAvailable(templateID)
-			status := "✅"
-			if !available {
-				status = "❌"
-			}
-			fmt.Printf("  %s %s: %d/%d\n", status, card.Nome, count, card.MaxCopies)
-		}
-	}
-	
-	fmt.Println("\n=================================")
-}
 
+func PrintCardStats() {
+	fmt.Println("\n📊 === ESTATÍSTICAS DE CARTAS ===")
+
+	// Conta por raridade
+	rarityCount := make(map[string]int)
+
+	for templateID, count := range SpecialCardCount {
+		if card, exists := BaseCards[templateID]; exists {
+			rarityCount[card.Rarity] += count
+		}
+	}
+
+	// Imprime por raridade
+	fmt.Println("Cartas distribuídas por raridade:")
+	for rarity, count := range rarityCount {
+		fmt.Printf("  %s: %d\n", rarity, count)
+	}
+
+	// Total
+	total := 0
+	for _, count := range rarityCount {
+		total += count
+	}
+	fmt.Printf("  TOTAL ESPECIAIS: %d\n", total)
+
+	// Versões criadas
+	versionsCreated := 0
+	for _, version := range CardVersions {
+		versionsCreated += version
+	}
+
+	if versionsCreated > 0 {
+		fmt.Printf("🆕 Versões criadas: %d\n", versionsCreated)
+		fmt.Println("Detalhes das versões:")
+		for templateID, version := range CardVersions {
+			if version > 0 {
+				if card, exists := BaseCards[templateID]; exists {
+					fmt.Printf("  %s: %d versões\n", card.Nome, version)
+				}
+			}
+		}
+	}
+
+	fmt.Println("=================================")
+}

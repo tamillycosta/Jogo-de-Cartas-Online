@@ -64,7 +64,6 @@ type DamageResult struct {
 	OpponentCardHP        int
 	GameEnded             bool
 	Winner                *Player
-	
 }
 
 // retorna uma nova partida
@@ -81,8 +80,6 @@ func NewMatch(player1 *Player, player2 *Player) *Match {
 	}
 	return match
 }
-
-
 
 // Processa a escolha de carta de um jogador
 func (lobby *Lobby) ProcessChoseCard(match *Match, currentPlayer *Player, req request.Request) GameActionResult {
@@ -126,6 +123,8 @@ func (lobby *Lobby) ProcessChoseCard(match *Match, currentPlayer *Player, req re
 		}
 	}
 
+	
+
 	return GameActionResult{
 		Success: true,
 		Action:  ACTION_CHOOSE_CARD,
@@ -162,7 +161,6 @@ func (lobby *Lobby) applyDamage(match *Match, opponent *Player, attackPower int)
 		opponentLife = &match.Player2Life
 		winner = match.Player1 // Se Player2 morrer, Player1 ganha
 	}
-
 
 	cardHP := opponent.CurrentCard.Health
 
@@ -251,7 +249,6 @@ func (lobby *Lobby) ProcessAttack(match *Match, currentPlayer *Player, req reque
 	return lobby.processAttackStatus(match, currentPlayer, attackPower, damageResult)
 }
 
-
 // Processa saída de um jogador da partida
 func (lobby *Lobby) ProcessLeaveMatch(match *Match, leavingPlayer *Player) GameActionResult {
 	match.Mu.Lock()
@@ -281,28 +278,23 @@ func (lobby *Lobby) ProcessLeaveMatch(match *Match, leavingPlayer *Player) GameA
 	}
 }
 
-
-
-
 // -------------------- Funções auxiliares -----------------------------------
 
+func (match *Match) RestoreCardsHp() {
 
-func (match *Match) RestoreCardsHp(){
-
-	for i := 0; i < 2; i++ {
-		card := match.Player1.Cards[i]
+	for i := 0; i < 3; i++ {
+		card := match.Player1.BattleDeck[i]
 		templateCard := BaseCards[card.TemplateID]
-		match.Player1.Cards[i].Health = templateCard.Health
+		match.Player1.BattleDeck[i].Health = templateCard.Health
 	}
 
-	for i := 0; i < 2; i++ {
-		card := match.Player2.Cards[i]
+	for i := 0; i < 3; i++ {
+		card := match.Player2.BattleDeck[i]
 		templateCard := BaseCards[card.TemplateID]
-		match.Player2.Cards[i].Health = templateCard.Health
+		match.Player2.BattleDeck[i].Health = templateCard.Health
 	}
-	
+
 }
-
 
 func (lobby *Lobby) GetOpponent(match *Match, currentPlayer *Player) *Player {
 	if match == nil || currentPlayer == nil {
@@ -374,4 +366,3 @@ func (match *Match) ChoseStartPlayer(player1 Player, player2 Player) {
 		match.Round.Sender = &player2
 	}
 }
-

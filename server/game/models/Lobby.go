@@ -14,7 +14,7 @@ import (
 	"net"
 	"sync"
 	"time"
-
+	"strings"
 	"gorm.io/gorm"
 )
 
@@ -139,7 +139,6 @@ func (lobby *Lobby) TryMatchUsers(req request.Request, conn net.Conn) response.R
 		if player1 == nil || player2 == nil {
             return resp.MakeErrorResponse(500, "Erro: Players não encontrados no lobby", "")
         }
-		
 
 		// Cria match
 		match := NewMatch(player1, player2)
@@ -206,13 +205,11 @@ func (lobby *Lobby) OpenCardPack(req request.Request, conn net.Conn) response.Re
         return resp.MakeErrorResponse(404, "Player não encontrado", "")
     }
     
-    // Verifica se pode abrir
     canOpen, remaining := GlobalPackSystem.CanOpenPack(player.ID)
     if !canOpen {
         return resp.MakeErrorResponse(400, "Pacote em cooldown", remaining.String())
     }
     
-    // Abre pacote
     newCards, err := GlobalPackSystem.OpenPack(player.ID)
     if err != nil {
         return resp.MakeErrorResponse(500, "Erro ao abrir pacote", err.Error())
@@ -268,13 +265,11 @@ func (lobby *Lobby) SelectMatchDeck(req request.Request, conn net.Conn) response
 	newIdx, err2 := strconv.Atoi(newCardIndex)
 	
 	if err1 != nil || err2 != nil {
-		fmt.Printf("❌ DEBUG: Erro ao converter índices - err1: %v, err2: %v\n", err1, err2)
 		return resp.MakeErrorResponse(400, "Índices inválidos", "")
 	}
 	
 	var player Player
 	if err := lobby.DB.Preload("Cards").Where("nome = ?", username).First(&player).Error; err != nil {
-		fmt.Printf("❌ DEBUG: Player não encontrado: %v\n", err)
 		return resp.MakeErrorResponse(404, "Player não encontrado no banco", "")
 	}
 	
@@ -321,14 +316,14 @@ func (lobby *Lobby) SelectMatchDeck(req request.Request, conn net.Conn) response
 	
 	tx := lobby.DB.Begin()
 	
-	// Atualiza carta antiga (remove do deck)
+	// Atualiza carta antiga 
 	if err := tx.Model(&oldCardFromDB).Update("in_deck", false).Error; err != nil {
 		tx.Rollback()
 		
 		return resp.MakeErrorResponse(500, "Erro ao remover carta do deck", "")
 	}
 	
-	// Atualiza carta nova (adiciona ao deck)
+	// Atualiza carta nova 
 	if err := tx.Model(&newCardFromDB).Update("in_deck", true).Error; err != nil {
 		tx.Rollback()
 	
@@ -346,7 +341,6 @@ func (lobby *Lobby) SelectMatchDeck(req request.Request, conn net.Conn) response
 	// Atualiza player logado se existir
 	if loggedPlayer := lobby.Players[username]; loggedPlayer != nil {
 		loggedPlayer.LoadBattleDeck(lobby.DB)
-		fmt.Printf("🔧 Battle deck do player atualizado\n")
 	}
 	
 	return resp.MakeSuccessResponse("Deck atualizado com sucesso!", map[string]string{
@@ -475,6 +469,55 @@ func (lobby *Lobby) ProcessGameAction(req request.Request, conn net.Conn) respon
 		"result": utils.Encode(actionResult),
 	})
 }
+
+// Metodo responssavel por apresentar estatisticas do estoque global (usado apenas no teste de pacotes)
+func (lobby *Lobby) GetStats(req request.Request, conn net.Conn) response.Response {
+	resp := response.Response{}
+	
+	// Coleta estatísticas por raridade
+	rarityStats := make(map[string]int)
+	for templateID, count := range SpecialCardCount {
+		if card, exists := BaseCards[templateID]; exists {
+			rarityStats[card.Rarity] += count
+		}
+	}
+	
+	// Coleta versões criadas
+	totalVersions := 0
+	versionDetails := make(map[string]string)
+	for templateID, version := range CardVersions {
+		if version > 0 {
+			totalVersions += version
+			if card, exists := BaseCards[templateID]; exists {
+				versionDetails[card.Nome] = fmt.Sprintf("%d", version)
+			}
+		}
+	}
+	
+	// Monta response data
+	data := map[string]string{
+		"type": "CARD_STATS",
+		"totalVersions": fmt.Sprintf("%d", totalVersions),
+	}
+	
+	// Adiciona estatísticas por raridade
+	for rarity, count := range rarityStats {
+		data[strings.ToLower(rarity)] = fmt.Sprintf("%d", count)
+	}
+	
+	// Adiciona detalhes das versões
+	for cardName, versions := range versionDetails {
+		data["version_"+cardName] = versions
+	}
+	
+	return resp.MakeSuccessResponse("Stats coletadas", data)
+}
+
+
+
+
+
+
 
 
 

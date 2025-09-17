@@ -9,7 +9,7 @@ import (
 	response "jogodecartasonline/api/Response"
 )
 
-
+// Notificação de partida encontrada 
 func NotifyMatchFound(waitingPlayer *WaitingPlayer, match *Match, opponent *Player) {
 	resp := response.Response{}
 	notification := resp.MakeSuccessResponse("Partida Encontrada!", map[string]string{
@@ -35,7 +35,7 @@ func NotifyMatchFound(waitingPlayer *WaitingPlayer, match *Match, opponent *Play
 	fmt.Printf("✅ %s notificado sobre partida encontrada\n", waitingPlayer.Player.Nome)
 }
 
-
+// Notificação de fim do jogo
 func NotifyGameEnd(player *Player, gameResult GameActionResult, isWinner bool) {
     resp := response.Response{}
     
@@ -71,6 +71,9 @@ func NotifyGameEnd(player *Player, gameResult GameActionResult, isWinner bool) {
     
 }
 
+
+
+// Notificação ação de um jogador para o seu oponente 
 func NotifyOpponentAction(opponent *Player, actionResult GameActionResult) error {
     resp := response.Response{}
     notification := resp.MakeSuccessResponse("Ação do oponente", map[string]string{
@@ -145,7 +148,7 @@ func (lobby *Lobby) processAttackStatus(match *Match, currentPlayer *Player, att
 			"attackPower":    attackPower,
 			"opponentLife":   damageResult.OpponentLifeRemaining,
 			"opponentCardHP": damageResult.OpponentCardHP,
-			"score": damageResult.Winner.Score,
+			
 			"result": func() string {
 				if damageResult.GameEnded {
 					
@@ -153,7 +156,18 @@ func (lobby *Lobby) processAttackStatus(match *Match, currentPlayer *Player, att
 				}
 				return "ATTACK_SUCCESS"
 			}(),
+		
+		"score": func() interface{} {
+				if damageResult.GameEnded {
+					if damageResult.Winner.ID == currentPlayer.ID {
+						return damageResult.Winner.Score + 100 // Score atualizado do vencedor
+					}
+					return currentPlayer.Score // Score atual do perdedor
+				}
+				return nil // Sem score se jogo não terminou
+			}(),
 		},
+	
 		OpponentResult: map[string]interface{}{
 			"damageTaken":     attackPower,
 			"lifeRemaining":   damageResult.OpponentLifeRemaining,
